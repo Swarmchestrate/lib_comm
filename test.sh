@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# the termination of nodes doesnt work. The nodes will continue running even after stopping the sh script
-
 # Enable strict mode for better error handling
 set -euo pipefail
 IFS=$'\n\t'
@@ -32,7 +30,7 @@ terminate_nodes() {
     echo ""
     echo "Terminating all nodes..."
     # Send SIGTERM to the entire process group
-    kill -- -$$ 2>/dev/null || true
+    kill $(jobs -p) 2>/dev/null || true
     exit 0
 }
 
