@@ -63,8 +63,6 @@ class P2PNode(Protocol):
         serialized_message = json.dumps(message) + "\n"
         data = serialized_message.encode("utf-8")
 
-        self.logger.info(f"Sending message: {message}")
-
         if peer_transport:
             peer_transport.write(data)
         else:
@@ -126,8 +124,11 @@ class P2PNode(Protocol):
         if peer_id not in self.factory.all_peers:
             self.logger.info(f"Adding peer {peer_id}")
             self.factory.all_peers[peer_id] = {}
+        elif "public" in self.factory.all_peers:
+            self.logger.info(f"Peer {peer_id} found with connection details.")
         else:
-            self.logger.info(f"Peer {peer_id} already known.")
+            self.logger.info(f"Peer {peer_id} found without connection details.")
+    
 
         peer = self.transport.getPeer()
 
@@ -265,19 +266,25 @@ class P2PNode(Protocol):
         if self.remote_id:
             peer_id = self.remote_id
             if peer_id in self.factory.all_peers:
-                del self.factory.all_peers[peer_id]
-                self.log_public_peer_list(message=f"Peer {peer_id} disconnected. Updated peer list")
+                if self.is_initiator:
+                    del self.factory.all_peers[peer_id]["local"]
+                else:
+                    del self.factory.all_peers[peer_id]["remote"]
 
                 #update factory peer count
                 self.factory.on_peer_disconnected()
-                
-                self.broadcast_remove_peer(peer_id)
 
-        # Stop periodic tasks if running
-        if self.periodic_task and self.periodic_task.running:
-            self.periodic_task.stop()
-        if self.heartbeat_task and self.heartbeat_task.running:
-            self.heartbeat_task.stop()
+                if not (self.factory.all_peers[peer_id].get("local",False) or
+                        self.factory.all_peers[peer_id].get("remote",False)):
+                    del self.factory.all_peers[peer_id]
+                    self.log_public_peer_list(message=f"Peer {peer_id} disconnected. Updated peer list")
+                    self.broadcast_remove_peer(peer_id)
+            
+                    # Stop periodic tasks if running
+                    if self.periodic_task and self.periodic_task.running:
+                        self.periodic_task.stop()
+                    if self.heartbeat_task and self.heartbeat_task.running:
+                        self.heartbeat_task.stop()
 
     def log_public_peer_list(self, message: str = "Peer list updated"):
         self.logger.info(

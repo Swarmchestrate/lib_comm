@@ -13,7 +13,6 @@ class SWCH_com():
         self.factory = P2PFactory(listen_ip,listen_port)
         self.start_server(self.factory,listen_ip,listen_port)
 
-
         self.factory.add_event_listener('peer_connected', self.handle_peer_connected)
         self.factory.add_event_listener('peer_disconnected', self.handle_peer_disconnected)
 
@@ -54,9 +53,14 @@ class SWCH_com():
 
     def rejoin_network(self):
         self.logger.info("Rejoin triggered")
-        pass
+        for peer_id, peer_con in self.factory.all_peers.items():
+            #Temporary solution, to be fixed
+            if (peer_id != self.factory.id) and ("public" in peer_con):
+                peer_host = peer_con['public'].get('host',"")
+                peer_port = peer_con['public'].get('port',"")
+                self.logger.info(f"Connecting to peer: {peer_id} : {peer_host}:{peer_port}")
+                self.connect_to_peer(peer_host, peer_port)
         
-
     def run(self):
         """Start the Twisted reactor."""
         reactor.run()
