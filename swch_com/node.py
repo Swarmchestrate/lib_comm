@@ -26,6 +26,7 @@ class P2PNode(Protocol):
 
         self.logger.info(f"Connected to peer at {peer_address} from {host_address}")
 
+
         if not self.is_initiator:
             self.send_peer_list(self.transport)
 
@@ -271,9 +272,6 @@ class P2PNode(Protocol):
                 else:
                     del self.factory.all_peers[peer_id]["remote"]
 
-                #update factory peer count
-                self.factory.on_peer_disconnected()
-
                 if not (self.factory.all_peers[peer_id].get("local",False) or
                         self.factory.all_peers[peer_id].get("remote",False)):
                     del self.factory.all_peers[peer_id]
@@ -285,6 +283,9 @@ class P2PNode(Protocol):
                         self.periodic_task.stop()
                     if self.heartbeat_task and self.heartbeat_task.running:
                         self.heartbeat_task.stop()
+
+                #update factory peer count
+                self.factory.on_peer_disconnected()
 
     def log_public_peer_list(self, message: str = "Peer list updated"):
         self.logger.info(
