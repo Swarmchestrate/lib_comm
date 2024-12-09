@@ -63,6 +63,8 @@ class P2PNode(Protocol):
         serialized_message = json.dumps(message) + "\n"
         data = serialized_message.encode("utf-8")
 
+        self.logger.info(f"Sending message: {message}")
+
         if peer_transport:
             peer_transport.write(data)
         else:
@@ -123,19 +125,19 @@ class P2PNode(Protocol):
 
         if peer_id not in self.factory.all_peers:
             self.logger.info(f"Adding peer {peer_id}")
+            self.factory.all_peers[peer_id] = {}
         else:
             self.logger.info(f"Peer {peer_id} already known.")
 
-        peer_info = {}
         peer = self.transport.getPeer()
 
         connection_type = "local" if self.is_initiator else "remote"
-        peer_info[connection_type] = {
+        peer_info = {
             "host": peer.host,
             "port": peer.port,
             "transport": self.transport
         }
-        self.factory.all_peers[peer_id] = peer_info
+        self.factory.all_peers[peer_id][connection_type] = peer_info
 
         self.remote_id = peer_id
         #Update factory peer count
@@ -143,7 +145,7 @@ class P2PNode(Protocol):
 
         if self.is_initiator:
             self.broadcast_peer_list()
-        self.start_heartbeat()
+        #self.start_heartbeat()
 
     def broadcast_peer_list(self):
         """Broadcast the known peer list to all connected peers."""
