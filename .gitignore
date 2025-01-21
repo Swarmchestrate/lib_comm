@@ -3,7 +3,7 @@
 __pycache__/
 *.py[cod]
 
-
+swch_com/__pycache__/
 swch_com/__pycache__/__init__.cpython-312.pyc
 swch_com/__pycache__/factory.cpython-312.pyc
 swch_com/__pycache__/node.cpython-312.pyc

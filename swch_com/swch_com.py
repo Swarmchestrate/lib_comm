@@ -53,9 +53,9 @@ class SWCH_com():
 
     def rejoin_network(self):
         self.logger.info("Rejoin triggered")
-        for peer_id, peer_con in self.factory.all_peers.items():
+        for peer_id, peer_con in self.factory.all_peers.get_all_peers_items():
             #Temporary solution, to be fixed
-            if (peer_id != self.factory.id) and ("public" in peer_con):
+            if (peer_id != self.factory.id) and peer_con["public"]:
                 peer_host = peer_con['public'].get('host',"")
                 peer_port = peer_con['public'].get('port',"")
                 self.logger.info(f"Connecting to peer: {peer_id} : {peer_host}:{peer_port}")
