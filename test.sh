@@ -50,13 +50,13 @@ start_node() {
         echo "Starting node${node_num} on port ${port} without --join"
         # Start the node and pipe its output to sed for prefixing
         # Run in a subshell to capture the PID of the 'poetry run' process
-        ( poetry run python3 example.py --listen 127.0.0.1:${port} 2>&1 ) | \
+        ( poetry run python3 example.py --listen 127.0.0.1:${port} --public 127.0.0.1:${port} 2>&1 ) | \
             sed "s/^/node${node_num}: /" &
     else
         echo "Starting node${node_num} on port ${port} with --join 127.0.0.1:${join_port}"
         # Start the node with --join and pipe its output to sed for prefixing
         # Run in a subshell to capture the PID of the 'poetry run' process
-        ( poetry run python3 example.py --listen 127.0.0.1:${port} --join 127.0.0.1:${join_port} 2>&1 ) | \
+        ( poetry run python3 example.py --listen 127.0.0.1:${port} --public 127.0.0.1:${port} --join 127.0.0.1:${join_port} 2>&1 ) | \
             sed "s/^/node${node_num}: /" &
     fi
 }
