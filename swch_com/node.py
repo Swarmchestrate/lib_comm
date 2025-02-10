@@ -5,7 +5,6 @@ import json
 import logging
 from typing import Optional, Dict, Any, List
 
-
 class P2PNode(Protocol):
     def __init__(self, factory, is_initiator: bool = False):
         self.factory = factory
@@ -26,11 +25,7 @@ class P2PNode(Protocol):
 
         self.logger.info(f"Connected to peer at {peer_address} from {host_address}")
 
-
-        if not self.is_initiator:
-            self.send_peer_list(self.transport)
-
-        self.send_info_to_peer()
+        self.send_welcome_info_to_peer()
 
     def dataReceived(self, data: bytes):
         """Handle incoming data."""
@@ -118,6 +113,10 @@ class P2PNode(Protocol):
     def process_peer_info(self, message: Dict[str, Any]):
         """Update peer info upon receiving process_peer_info message."""
         peer_id = message.get("peer_id")
+        peer_universe = message.get("peer_universe")
+        peer_type = message.get("peer_type")
+
+        self.logger.info("Received peer_info: {},{},{}".format(peer_id,peer_universe,peer_type))
         if not peer_id:
             self.logger.error("Received process_peer_info without id")
             return
@@ -130,7 +129,6 @@ class P2PNode(Protocol):
         else:
             self.logger.info(f"Peer {peer_id} found without connection details.")
     
-
         peer = self.transport.getPeer()
 
         if self.is_initiator:
@@ -138,22 +136,17 @@ class P2PNode(Protocol):
         else:
             self.factory.all_peers.set_remote_info(peer_id, peer.host, peer.port, self.transport)
 
-        """
-        connection_type = "local" if self.is_initiator else "remote"
-        peer_info = {
-            "host": peer.host,
-            "port": peer.port,
-            "transport": self.transport
-        }
-        self.factory.all_peers[peer_id][connection_type] = peer_info
-        """
-
         self.remote_id = peer_id
         #Update factory peer count
         self.factory.on_peer_connected()
 
         if self.is_initiator:
+            self.logger.info(f"I ({peer_id}) am initiator. Broadcasting peer list...")
             self.broadcast_peer_list()
+        else:
+            if peer_type=="ra":
+                self.send_peer_list(self.transport)
+
         #self.start_heartbeat()
 
     def broadcast_peer_list(self):
@@ -195,13 +188,15 @@ class P2PNode(Protocol):
         }
         self.send_message(message)
 
-    def send_info_to_peer(self):
+    def send_welcome_info_to_peer(self):
         """Send peer info to the connected peer."""
         message_id = str(uuid.uuid4())
         message = {
             "type": "peer_info",
             "message_id": message_id,
-            "peer_id": self.factory.id
+            "peer_id": self.factory.id,
+            "peer_universe": self.factory.universe,
+            "peer_type": self.factory.type
         }
         self.send_message(message, peer_transport=self.transport)
 

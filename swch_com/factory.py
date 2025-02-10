@@ -1,4 +1,3 @@
-import uuid
 import logging
 from twisted.internet.protocol import Factory
 
@@ -6,29 +5,21 @@ from swch_com.node import P2PNode
 from swch_com.peers import Peers
 
 class P2PFactory(Factory):
-    def __init__(self, public_ip, public_port):
+    def __init__(self, id, universe, type, public_ip, public_port):
         self.all_peers = Peers()
 
         #self.all_peers = {}  # Store peers at the factory level
 
         self.seen_messages = set()  # Keep track of processed message IDs
-        self.id = str(uuid.uuid4())  # Unique ID for this node
+        self.id = id  # Unique ID for this node
+        self.universe = universe
+        self.type = type
 
         self.public_ip = public_ip
         self.public_port = public_port
 
-
         self.all_peers.add_peer(self.id)
         self.all_peers.set_public_info(self.id,public_ip,public_port)
-        
-        """
-        self.all_peers[self.id] = {
-            "public": {
-                "host": public_ip,
-                "port": public_port
-            }
-        }
-        """
 
         print(f"Peer initialized with id: {self.id}, host: {public_ip}, port: {public_port}")
         self.logger = logging.getLogger(__name__)  # Initialize logger

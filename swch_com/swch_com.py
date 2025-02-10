@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from twisted.internet import reactor
 from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
@@ -7,15 +8,18 @@ from swch_com.factory import P2PFactory
 from swch_com.node import P2PNode
 
 class SWCH_com():
-    def __init__(self, listen_ip, listen_port, public_ip=None, public_port=None, min_connection_count=1):
+    def __init__(self, id, universe, type, listen_ip=None, listen_port=None, public_ip=None, public_port=None, min_connection_count=1):
         self.connectionCount = 0
         self.min_connection_count = min_connection_count
+
+        if not id:
+            id = str(uuid.uuid4())
 
         if not public_ip or not public_port:
             public_ip = listen_ip
             public_port = listen_port
 
-        self.factory = P2PFactory(public_ip,public_port)
+        self.factory = P2PFactory(id, universe, type, public_ip,public_port)
         self.start_server(self.factory,listen_ip,listen_port)
 
         self.factory.add_event_listener('peer_connected', self.handle_peer_connected)
@@ -48,7 +52,7 @@ class SWCH_com():
             d = connectProtocol(endpoint, protocol)
 
             def on_connect(p):
-                self.logger.info(f"Connected to peer at {ip}:{port}")
+                self.logger.info(f"Connected to peer at {ip}:{port} as initiator")
 
             d.addCallback(on_connect)
             d.addErrback(lambda e: logging.error(f"Failed to connect to {ip}:{port}: {e}"))
