@@ -9,7 +9,7 @@ set -m
 
 # Configuration
 BASE_PORT=5000          # Starting port number
-NUM_NODES=5             # Number of nodes to start
+NUM_NODES=2             # Number of nodes to start
 SLEEP_TIME=2            # Time to wait between starting nodes (in seconds)
 
 # Array to keep track of started ports

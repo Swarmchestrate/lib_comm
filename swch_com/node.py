@@ -39,7 +39,8 @@ class P2PNode(Protocol):
         lines = self.buffer.split("\n")
         self.buffer = lines.pop()  # Save incomplete data
 
-        for line in lines:
+        for line in lines:  
+            self.logger.info("Incoming message: %s",str(line))
             if not line.strip():
                 continue  # Skip empty lines
             try:
@@ -77,41 +78,62 @@ class P2PNode(Protocol):
 
     def process_message(self, message: Dict[str, Any]):
         """Handle and forward broadcast messages."""
+
         message_id = message.get("message_id")
         if not message_id:
             self.logger.warning("Received message without message_id")
             return
 
         if message_id in self.factory.seen_messages:
+            self.logger.info("duplicate message DETECTED!")
             return  # Deduplicate messages
 
         self.factory.seen_messages.add(message_id)
 
         message_type = message.get("type")
-        if message_type == "broadcast_peer_list_add":
-            self.update_peer_list(message)
-            self.send_message(message)
-        elif message_type == "peer_list_add":
-            self.update_peer_list(message)
-        elif message_type == "peer_list_update":
-            self.update_peer_list(message)
-        elif message_type == "peer_info":
-            self.process_peer_info(message)
-        elif message_type == "broadcast_remove_peer":
-            self.remove_peer(message)
-            self.send_message(message)
-        elif message_type == "broadcast_message":
-            self.send_message(message)
-        elif message_type == "ping":
-            self.logger.info(f"{message.get('content', '')}")
-            self.send_message(self.pong_message(), peer_transport=self.transport)
-        elif message_type == "pong":
-            self.logger.info(f"{message.get('content', '')}")
+
+        if hasattr(self, "pong_message") and hasattr(self, "transport"):
+            pong_message = self.pong_message()
+            transport = self.transport
         else:
-            self.logger.warning(f"Unknown message type received: {message_type}")
+            pong_message = None
+            transport = None
+
+        match message_type:
+            case "client_submit":
+                self.client_submit(message)
+            case "broadcast_peer_list_add":
+                self.update_peer_list(message)
+                self.send_message(message)
+            case "peer_list_add" | "peer_list_update":
+                self.update_peer_list(message)
+            case "peer_info":
+                self.process_peer_info(message)
+            case "broadcast_remove_peer":
+                self.remove_peer(message)
+                self.send_message(message)
+            case "broadcast_message":
+                self.send_message(message)
+            case "ping":
+                self.logger.info(f"{message.get('content', '')}")
+                if pong_message and transport:
+                    self.send_message(pong_message, peer_transport=transport)
+            case "pong":
+                self.logger.info(f"{message.get('content', '')}")
+            case _:
+                self.logger.warning(f"Unknown message type received: {message_type}")
+
+    def client_submit(self, message):
+        self.logger.info(f"Client submit: {message.get('appl_descr', '')}")
+        message = {
+            "type": "ack_client_submit",
+            "message_id": str(uuid.uuid4()),
+        }
+        self.send_message(message,self.transport)
 
     def process_peer_info(self, message: Dict[str, Any]):
         """Update peer info upon receiving process_peer_info message."""
+ 
         peer_id = message.get("peer_id")
         peer_universe = message.get("peer_universe")
         peer_type = message.get("peer_type")
