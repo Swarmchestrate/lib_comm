@@ -7,7 +7,7 @@ from swch_com.peers import Peers
 class P2PFactory(Factory):
     def __init__(self, id, universe, type, public_ip, public_port):
         self.all_peers = Peers()
-
+        self.node = P2PNode(self)
         #self.all_peers = {}  # Store peers at the factory level
 
         self.seen_messages = set()  # Keep track of processed message IDs
@@ -33,8 +33,8 @@ class P2PFactory(Factory):
 
     def buildProtocol(self, addr):
         """Create a new P2PNode protocol instance"""
-        node = P2PNode(self)  # Pass the factory instance to P2PNode
-        return node
+        #self.node = P2PNode(self)  # Pass the factory instance to P2PNode
+        return self.node
 
     def add_event_listener(self, event_name, listener):
         """Register an event listener for a specific event"""

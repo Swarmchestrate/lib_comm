@@ -22,17 +22,20 @@ class SwChClient():
             print(f"Error: {e}")
         
         welcome_message = {
-            "type": "peer_info",
+            "message_type": "peer_info",
             "message_id": str(uuid.uuid4()),
             "peer_id": self.myid,
             "peer_universe": self.myuniverse,
             "peer_type": self.mytype
         }
-        self.send_message(welcome_message)
-        
+        serialized_message = json.dumps(welcome_message) + "\n"
+        data = serialized_message.encode("utf-8")
+        try:
+            self.sock.sendall(data)
+        except (socket.error, OSError) as e:
+            print(f"Socket error: {e}")
+
         message = self.wait_message()
-        #print(f"Received peer info: {message}")
-        
         peer_id = message.get("peer_id")
         peer_universe = message.get("peer_universe")
         peer_type = message.get("peer_type")
@@ -47,7 +50,14 @@ class SwChClient():
         self.RA = peer_id
         return
 
-    def send_message(self, message):
+    def send_message(self, message_type, message_body):
+        message = {
+            "peer_id": self.myid,
+            "message_id": str(uuid.uuid4()),
+
+            "message_type": message_type,
+            "message_body": message_body 
+        }
         serialized_message = json.dumps(message) + "\n"
         data = serialized_message.encode("utf-8")
         try:
@@ -55,6 +65,9 @@ class SwChClient():
             #print(f"Sent message \"{message}\" to {self.host}:{self.port}.")        
         except (socket.error, OSError) as e:
             print(f"Socket error: {e}")
+        return
+    
+    def recv_message(self):
         return
     
     def wait_message(self):
@@ -91,20 +104,19 @@ class SwChClient():
 
     def submit(self):
         print("Submitting application to RA (\"%s\")... " % self.RA)
-        message = {
-            "type": "client_submit",
-            "message_id": str(uuid.uuid4()),
-            "appl_descr": "placeholder of appl descr"
-        } 
-        self.send_message(message)
+        appdescr = {
+            "param1": "something",
+            "param2": "else"
+        }
+        self.send_message("user_client_submit", appdescr)
         recv_msg = self.wait_message()
-        print(f"Submission to RA has been acknowledged")
+        print(f"Message from RA: {recv_msg}")
 
         
 def main():
     host = "127.0.0.1"  # Replace with the server's IP address
     port = 5000         # Replace with the server's port
-    myid = "anything"
+    myid = "client123"
     myuniverse = "swch"
     mytype = "cl"
 

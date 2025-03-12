@@ -27,6 +27,17 @@ class SWCH_com():
 
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
+    def register_message_handler(self, message_type, func ):
+        self.factory.node.user_defined_msg_handlers[message_type] = func
+
+    def send_message(self, clientid, message):
+        peer_info = self.factory.all_peers.get_peer_info(clientid)
+        transport = None
+        for location in ["remote", "local"]:
+                location_info = peer_info.get(location)
+                if location_info and "transport" in location_info:
+                    transport = location_info["transport"]
+        self.factory.node.send_message(message, transport)
 
     def handle_peer_connected(self):
         self.connectionCount += 1

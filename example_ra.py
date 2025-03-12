@@ -48,8 +48,6 @@ if __name__ == "__main__":
 
     com = SWCH_com(None,"swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
         
-#        None, "swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
-
     # If join is provided, connect to the specified peer
     if args.join:
         try:
@@ -60,5 +58,19 @@ if __name__ == "__main__":
             sys.exit(1)
 
         com.connect_to_peer(join_ip,join_port)
+
+    def client_submit(clientid, message):
+        import uuid
+        logging.info(f"Client submit arrived: peer: {clientid}, message: {message}")
+        message = {
+            "message_type": "ack_client_submit",
+            "message_id": str(uuid.uuid4())
+        }
+        com.send_message(clientid, message)
+        return
+
+    #com.register_message_handler(message_id, func)
+    com.register_message_handler("user_client_submit", client_submit)
+
 
     com.run()

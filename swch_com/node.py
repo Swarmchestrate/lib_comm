@@ -15,6 +15,11 @@ class P2PNode(Protocol):
         self.remote_id: Optional[str] = None  # ID of the remote peer
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
+        self.user_defined_msg_handlers=dict()
+
+    def register_message_handler(self, message_type, func ):
+        self.user_defined_msg_handlers[message_type] = func
+
     def connectionMade(self):
         """Handle new connection."""
         peer = self.transport.getPeer()
@@ -80,17 +85,17 @@ class P2PNode(Protocol):
         """Handle and forward broadcast messages."""
 
         message_id = message.get("message_id")
+        
         if not message_id:
             self.logger.warning("Received message without message_id")
             return
 
         if message_id in self.factory.seen_messages:
-            self.logger.info("duplicate message DETECTED!")
             return  # Deduplicate messages
 
         self.factory.seen_messages.add(message_id)
 
-        message_type = message.get("type")
+        message_type = message.get("message_type")
 
         if hasattr(self, "pong_message") and hasattr(self, "transport"):
             pong_message = self.pong_message()
@@ -100,8 +105,6 @@ class P2PNode(Protocol):
             transport = None
 
         match message_type:
-            case "client_submit":
-                self.client_submit(message)
             case "broadcast_peer_list_add":
                 self.update_peer_list(message)
                 self.send_message(message)
@@ -121,15 +124,12 @@ class P2PNode(Protocol):
             case "pong":
                 self.logger.info(f"{message.get('content', '')}")
             case _:
-                self.logger.warning(f"Unknown message type received: {message_type}")
-
-    def client_submit(self, message):
-        self.logger.info(f"Client submit: {message.get('appl_descr', '')}")
-        message = {
-            "type": "ack_client_submit",
-            "message_id": str(uuid.uuid4()),
-        }
-        self.send_message(message,self.transport)
+                if message_type in self.user_defined_msg_handlers:
+                    func = self.user_defined_msg_handlers[message_type]
+                    func(message.get("peer_id",""),message.get("message_body","")) 
+                else:
+                    print("registered handlers: " % self.user_defined_msg_handlers)
+                    self.logger.warning(f"Unknown message type received: {message_type}")
 
     def process_peer_info(self, message: Dict[str, Any]):
         """Update peer info upon receiving process_peer_info message."""
@@ -180,7 +180,7 @@ class P2PNode(Protocol):
             if subdict["public"]
         ]
         message = {
-            "type": "broadcast_peer_list_add",
+            "message_type": "broadcast_peer_list_add",
             "message_id": message_id,
             "peers": peer_list
         }
@@ -194,7 +194,7 @@ class P2PNode(Protocol):
             if subdict["public"]
         ]
         message = {
-            "type": "peer_list_add",
+            "message_type": "peer_list_add",
             "message_id": message_id,
             "peers": peer_list
         }
@@ -204,7 +204,7 @@ class P2PNode(Protocol):
         """Broadcast a message to all peers to remove a disconnected peer."""
         message_id = str(uuid.uuid4())
         message = {
-            "type": "broadcast_remove_peer",
+            "message_type": "broadcast_remove_peer",
             "message_id": message_id,
             "peer_id": peer_id
         }
@@ -214,7 +214,7 @@ class P2PNode(Protocol):
         """Send peer info to the connected peer."""
         message_id = str(uuid.uuid4())
         message = {
-            "type": "peer_info",
+            "message_type": "peer_info",
             "message_id": message_id,
             "peer_id": self.factory.id,
             "peer_universe": self.factory.universe,
@@ -263,7 +263,7 @@ class P2PNode(Protocol):
         """Construct a pong message."""
         message_id = str(uuid.uuid4())
         return {
-            "type": "pong",
+            "message_type": "pong",
             "message_id": message_id,
             "content": f"Pong from {self.factory.id}"
         }
@@ -273,7 +273,7 @@ class P2PNode(Protocol):
         def periodic_message():
             message_id = str(uuid.uuid4())
             message = {
-                "type": "broadcast_message",
+                "message_type": "broadcast_message",
                 "message_id": message_id,
                 "content": f"Hello from {self.factory.id}"
             }
@@ -287,7 +287,7 @@ class P2PNode(Protocol):
         def send_ping():
             message_id = str(uuid.uuid4())
             message = {
-                "type": "ping",
+                "message_type": "ping",
                 "message_id": message_id,
                 "content": f"Ping from {self.factory.id}"
             }
