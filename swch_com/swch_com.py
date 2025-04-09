@@ -93,13 +93,11 @@ class SwChClient():
         self.myid = myid
         self.myuniverse = myuniverse
         self.mytype = "CL"
-        self.RAid = None
+        self.connectedRA={'id': None, 'host': None, 'port': None}
         self.message_buffer = ""
         self.message_lines = []
 
     def connect_to_RA(self, host: str, port: int) -> None:
-        self.host = host
-        self.port = port
         try:
             self.sock = socket.create_connection((host, port))
             #print(f"Connected to {host}:{port}.")
@@ -132,12 +130,14 @@ class SwChClient():
             print("Remote peer is not an RA! Exiting...")
             exit(1)
         print(f"Successfully connected to RA with id \"%s\"." % peer_id)
-        self.RAid = peer_id
-        return peer_id
+        self.connectedRA['id'] = peer_id
+        self.connectedRA['host'] = host
+        self.connectedRA['port'] = port
+        return
 
     def send_message(self, message_type: str, message_body: dict) -> None:
         message = {
-            "peer_id": self.RAid,
+            "peer_id": self.connectedRA['id'],
             "message_id": str(uuid.uuid4()),
 
             "message_type": message_type,
@@ -181,7 +181,7 @@ class SwChClient():
         except (socket.error, OSError) as e:
             print(f"Error: {e}")
     
-    def disconnect(self) -> None:
+    def disconnect_from_RA(self) -> None:
         try:
             self.sock.close()
         except (socket.error, OSError) as e:

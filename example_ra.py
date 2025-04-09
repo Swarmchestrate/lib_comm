@@ -11,7 +11,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Set up argument parser
-    parser = argparse.ArgumentParser(description="P2P Node")
+    parser = argparse.ArgumentParser(description="SwCh Resource Agent")
     parser.add_argument(
         "--listen",
         required=True,
