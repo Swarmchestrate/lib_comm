@@ -1,7 +1,7 @@
 import logging
 import argparse
 
-from swch_com.swch_com import SWCH_com
+from swch_com.swch_com import SwChResourceAgent
 
 
 if __name__ == "__main__":
@@ -47,7 +47,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     
-    com = SWCH_com(None,"swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
+    com = SwChResourceAgent(None,"swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
         
     # If join is provided, connect to the specified peer
     if args.join:

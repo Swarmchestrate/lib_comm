@@ -1,4 +1,4 @@
-from swch_com.client import SwChClient
+from swch_com.swch_com import SwChClient
 
 def main() -> None:
     RAhost = "127.0.0.1"  # Replace with the server's IP address
