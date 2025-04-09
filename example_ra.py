@@ -46,6 +46,7 @@ if __name__ == "__main__":
             logging.error("Invalid format for --public. Expected format is ip:port")
             sys.exit(1)
 
+    
     com = SWCH_com(None,"swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
         
     # If join is provided, connect to the specified peer
