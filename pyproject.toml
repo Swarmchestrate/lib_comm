@@ -1,8 +1,13 @@
 [tool.poetry]
 name = "swch_com"
 version = "0.1.0"
-description = ""
-authors = []
+description = "A Python package for peer-to-peer communication for swarmchestrate entities"
+authors = [
+    "József Kovács <jozsef.kovacs@sztaki.hun-ren.hu>",
+    "Benedek Kovács <bened3k@sztaki.hu>",
+]
+readme = "README.md"
+packages = [{include = "swch_com"}]
 
 [tool.poetry.dependencies]
 twisted = "*"
