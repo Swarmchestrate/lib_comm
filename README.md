@@ -5,7 +5,7 @@
 
 ## Overview
 
-**Project Name** is a Python package for creating a peer to peer network.
+**Swch_comm** is a Python package for creating a peer to peer network.
 
 ---
 
