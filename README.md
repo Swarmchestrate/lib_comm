@@ -1,11 +1,11 @@
-# Swarmchestrate
+# Swarmchestrate communication library
 
 [![Python Version](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Poetry](https://img.shields.io/badge/poetry-%20v1.0+-blue)](https://python-poetry.org/)
+[![Poetry](https://img.shields.io/badge/poetry-%20v1.2+-blue)](https://python-poetry.org/)
 
 ## Overview
 
-**Project Name** is a Python package ...
+**Project Name** is a Python package for creating a peer to peer network.
 
 ---
 
@@ -20,9 +20,11 @@
 ## Prerequisites
 
 - Python 3.8 or later
-- Poetry 1.0 or later
+- Poetry 1.2 or later
 
 ---
+
+## Developement
 
 ## Installing Poetry
 
@@ -50,14 +52,6 @@ You should see something like:
 Poetry version 1.x.x
 ```
 
-### 3. Configure Poetry (Optional)
-
-Set Poetry to create virtual environments inside your project directory (optional but recommended):
-
-```bash
-poetry config virtualenvs.in-project true
-```
-
 ---
 
 ## Installation
@@ -83,56 +77,13 @@ poetry config virtualenvs.in-project true
 
    > Note: Activating the virtual environment is optional. You can still use the package directly by prefacing your commands with `poetry run`, which runs the script within Poetry's managed virtual environment.
 
----
-
-## Usage
-
-The package provides an example script `example.py` to demonstrate its functionality. The script can be used to start a server or join an existing network.
-
-### Command Syntax
-
-```bash
-poetry run python3 example.py --listen <ip:port> --join <ip:port>
-```
-
-### Options
-
-- `--listen <ip:port>`: Starts the server and listens for incoming connections.
-- `--join <ip:port>`: Joins an existing network at the specified IP and port.
-
-### Example 1: Start a Server
-
-To start a server listening on `127.0.0.1:8080`:
-
-```bash
-poetry run python3 example.py --listen 127.0.0.1:8080
-```
-
-### Example 2: Join a Network
-
-To join a network on `192.168.1.10:8080`:
-
-```bash
-poetry run python3 example.py --join 192.168.1.10:8080
-```
-
----
-
-## Development
-
-1. Install dependencies:
+4. (Optional) Building the package:
 
    ```bash
-   poetry install
+   poetry build
    ```
 
-2. Run tests:
-
-   ```bash
-   poetry run pytest
-   ```
-
-3. Add new dependencies:
+5. Add new dependencies:
 
    ```bash
    poetry add <package-name>
@@ -140,9 +91,62 @@ poetry run python3 example.py --join 192.168.1.10:8080
 
 ---
 
-## License
+## Example Usage
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
+The package provides example scripts to demonstrate peer-to-peer communication:
+- `example_ra.py` - Resource Agent (RA) implementation
+- `example_cli.py` - Client implementation 
+
+### Starting Resource Agents
+
+Use the provided `launch_RAs.sh` script to start multiple Resource Agents:
+
+```bash
+./launch_RAs.sh
+```
+
+This script will:
+- Start 2 Resource Agents by default
+- First RA listens on port 5000
+- Second RA connects to the first one and listens on port 5001
+
+#### Manual RA Launch
+
+To manually start a Resource Agent:
+
+```bash
+# First RA
+poetry run python3 example_ra.py --listen 127.0.0.1:5000 --public 127.0.0.1:5000
+
+# Additional RA joining the network
+poetry run python3 example_ra.py --listen 127.0.0.1:5001 --public 127.0.0.1:5001 --join 127.0.0.1:5000
+```
+
+Options for `example_ra.py`:
+- `--listen <ip:port>`: Local address to listen on
+- `--public <ip:port>`: Public address for other peers to connect to
+- `--join <ip:port>`: (Optional) Address of existing RA to join
+
+### Starting a Client
+
+Use the provided `launch_client.sh` script to start a client that connects to an RA:
+
+```bash
+./launch_client.sh
+```
+
+This connects to the RA running on port 5000 by default.
+
+#### Manual Client Launch
+
+To manually start a client:
+
+```bash
+poetry run python3 example_cli.py --join 127.0.0.1:5000
+```
+
+Options for `example_cli.py`:
+- `--join <ip:port>`: Address of RA to connect to
 
 ---
 
@@ -150,9 +154,8 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 For any questions or feedback, feel free to reach out:
 
-- **Email**: your.email@example.com
-- **GitHub**: [yourusername](https://github.com/yourusername)
+- **Email**: jozsef.kovacs@sztaki.hun-ren.hu
 
 ---
 
-Thank you for using **Swarmchestrate**! 🎉
+Thank you for using **swch_comm**! 🎉
