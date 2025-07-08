@@ -31,4 +31,4 @@ jobs:
         run: poetry build -f wheel
 
       - name: Publish to PyPI
-        run: poetry publish -r pypi --no-interaction
+        run: poetry publish --no-interaction
