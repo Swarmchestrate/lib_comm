@@ -16,21 +16,16 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Install Poetry & Twine
-        run: |
-          python -m pip install --upgrade poetry twine
+      - name: Install Poetry
+        run: python -m pip install --upgrade poetry
+
+      - name: Configure Poetry for GitHub Packages
+        run: poetry config http-basic.github "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Install dependencies
         run: poetry install --no-interaction --only main
 
-      - name: Build wheel with Poetry
-        run: poetry build -f wheel
-
-      - name: Publish to GitHub Packages
+      - name: Build & publish with Poetry
         run: |
-          twine upload \
-            --repository github \
-            dist/*.whl
-        env:
-          TWINE_USERNAME: ${{ github.actor }}
-          TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          poetry build -f wheel
+          poetry publish -r github --no-interaction
