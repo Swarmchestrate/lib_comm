@@ -20,15 +20,11 @@ jobs:
       - name: Install Poetry
         run: python -m pip install --upgrade poetry
 
-      - name: Configure Poetry PyPI token
-        # this writes your API token into Poetry's config
-        run: poetry config pypi-token.pypi "${{ secrets.PYPI_API_TOKEN }}"
-
-      - name: Install dependencies
-        run: poetry install --no-interaction --only main
-
       - name: Build wheel
         run: poetry build -f wheel
 
       - name: Publish to PyPI
-        run: poetry publish --no-interaction
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
