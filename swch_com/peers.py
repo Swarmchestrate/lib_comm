@@ -2,6 +2,13 @@ class Peers:
     def __init__(self):
         """
         Initialize the data structure to hold all peer information.
+
+        The structure is a dictionary where each key is a peer ID,
+        and the value is another dictionary containing:
+        - "local": A dictionary with local host, port, and transport information.
+        - "remote": A dictionary with remote host, port, and transport information.
+        - "public": A dictionary with public host and port information.
+        This allows for easy access and modification of peer information
         """
         self.peers = {}
 
@@ -41,7 +48,7 @@ class Peers:
         :param peer_id: Identifier for the peer.
         :param host: The local host address (string).
         :param port: The local port (string).
-        :param transport: The transport mechanism (e.g., "tcp", "udp", etc.).
+        :param transport: The transport object.
         """
         # Ensure the peer exists
         self.add_peer(peer_id)
@@ -58,7 +65,7 @@ class Peers:
         :param peer_id: Identifier for the peer.
         :param host: The remote host address.
         :param port: The remote port.
-        :param transport: The transport mechanism.
+        :param transport: The transport object.
         """
         self.add_peer(peer_id)
         self.peers[peer_id]["remote"] = {
