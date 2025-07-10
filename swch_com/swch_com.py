@@ -33,7 +33,7 @@ class SwChResourceAgent():
         self.factory.node.user_defined_msg_handlers[message_type] = func
 
     def send_message(self, clientid, message):
-        peer_info = self.factory.all_peers.get_peer_info(clientid)
+        peer_info = self.factory.peers.get_peer_info(clientid)
         transport = None
         for location in ["remote", "local"]:
                 location_info = peer_info.get(location)
@@ -61,7 +61,7 @@ class SwChResourceAgent():
     def connect_to_peer(self, ip, port):
         def _connect():
             endpoint = TCP4ClientEndpoint(reactor, ip, port)
-            protocol = P2PNode(self.factory, is_initiator=True)
+            protocol = P2PNode(self.factory, self.factory.peers, is_initiator=True)
             d = connectProtocol(endpoint, protocol)
 
             def on_connect(p):
@@ -75,7 +75,7 @@ class SwChResourceAgent():
 
     def rejoin_network(self):
         self.logger.info("Rejoin triggered")
-        for peer_id, peer_con in self.factory.all_peers.get_all_peers_items():
+        for peer_id, peer_con in self.factory.peers.get_all_peers_items():
             #Temporary solution, to be fixed
             if (peer_id != self.factory.id) and peer_con["public"]:
                 peer_host = peer_con['public'].get('host',"")

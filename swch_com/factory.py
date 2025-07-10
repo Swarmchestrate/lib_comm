@@ -5,24 +5,23 @@ from swch_com.node import P2PNode
 from swch_com.peers import Peers
 
 class P2PFactory(Factory):
-    def __init__(self, id, universe, type, public_ip, public_port):
-        self.all_peers = Peers()
-        self.node = P2PNode(self)
-        #self.all_peers = {}  # Store peers at the factory level
+    def __init__(self, peer_id: str, peer_type: str, universe: str, public_ip: str, public_port: str):
+        self.peers = Peers()
+        self.node = P2PNode(self, self.peers)
 
         self.seen_messages = set()  # Keep track of processed message IDs
-        self.id = id  # Unique ID for this node
+        self.id = peer_id  # Unique ID for this node
         self.universe = universe
-        self.type = type
+        self.type = peer_type
 
         self.public_ip = public_ip
         self.public_port = public_port
 
-        self.all_peers.add_peer(self.id)
-        self.all_peers.set_public_info(self.id,public_ip,public_port)
+        self.peers.add_peer(self.id)
+        self.peers.set_public_info(self.id, public_ip, public_port)
 
-        print(f"Peer initialized with id: {self.id}, host: {public_ip}, port: {public_port}")
         self.logger = logging.getLogger(__name__)  # Initialize logger
+        self.logger.info(f"Initialized P2PFactory with id: {self.id}, type: {self.type}, universe: {self.universe}, host: {public_ip}, port: {public_port}")
 
         # Initialize event listeners dictionary
         self.event_listeners = {

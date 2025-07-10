@@ -5,9 +5,13 @@ import json
 import logging
 from typing import Optional, Dict, Any, List
 
+from swch_com.peers import Peers
+
 class P2PNode(Protocol):
-    def __init__(self, factory, is_initiator: bool = False):
+    def __init__(self, factory, peers: Peers, is_initiator: bool = False):
         self.factory = factory
+        self.peers = peers
+
         self.buffer = ""  # Buffer to hold partial messages
         self.periodic_task: Optional[LoopingCall] = None  # Task to send periodic messages
         self.heartbeat_task: Optional[LoopingCall] = None  # Task to send heartbeat messages
@@ -74,7 +78,7 @@ class P2PNode(Protocol):
     def get_all_transports(self) -> List[Any]:
         """Retrieve all connected transports."""
         transports = []
-        for peer_info in self.factory.all_peers.get_all_peers_values():
+        for peer_info in self.peers.get_all_peers_values():
             for location in ["remote", "local"]:
                 location_info = peer_info.get(location)
                 if location_info and "transport" in location_info:
@@ -143,10 +147,10 @@ class P2PNode(Protocol):
             self.logger.error("Received process_peer_info without id")
             return
 
-        if not self.factory.all_peers.get_peer_info(peer_id):
+        if not self.peers.get_peer_info(peer_id):
             self.logger.info(f"Adding peer {peer_id}")
-            self.factory.all_peers.add_peer(peer_id)
-        elif self.factory.all_peers.get_peer_info(peer_id)["public"]:
+            self.peers.add_peer(peer_id)
+        elif self.peers.get_peer_info(peer_id)["public"]:
             self.logger.info(f"Peer {peer_id} found with connection details.")
         else:
             self.logger.info(f"Peer {peer_id} found without connection details.")
@@ -154,9 +158,9 @@ class P2PNode(Protocol):
         peer = self.transport.getPeer()
 
         if self.is_initiator:
-            self.factory.all_peers.set_local_info(peer_id, peer.host, peer.port, self.transport)
+            self.peers.set_local_info(peer_id, peer.host, peer.port, self.transport)
         else:
-            self.factory.all_peers.set_remote_info(peer_id, peer.host, peer.port, self.transport)
+            self.peers.set_remote_info(peer_id, peer.host, peer.port, self.transport)
 
         self.remote_id = peer_id
         #Update factory peer count
@@ -176,7 +180,7 @@ class P2PNode(Protocol):
         message_id = str(uuid.uuid4())
         peer_list = [
             (peer_id, subdict["public"])
-            for peer_id, subdict in self.factory.all_peers.get_all_peers_items()
+            for peer_id, subdict in self.peers.get_all_peers_items()
             if subdict["public"]
         ]
         message = {
@@ -190,7 +194,7 @@ class P2PNode(Protocol):
         message_id = str(uuid.uuid4())
         peer_list = [
             (peer_id, subdict["public"])
-            for peer_id, subdict in self.factory.all_peers.get_all_peers_items()
+            for peer_id, subdict in self.peers.get_all_peers_items()
             if subdict["public"]
         ]
         message = {
@@ -228,22 +232,22 @@ class P2PNode(Protocol):
         changed = False
 
         for peer_id, public in peers:
-            if not self.factory.all_peers.get_peer_info(peer_id):
+            if not self.peers.get_peer_info(peer_id):
                 self.logger.info("Recieved new peer public info")
-                self.factory.all_peers.set_public_info(peer_id, public["host"], public["port"])
+                self.peers.set_public_info(peer_id, public["host"], public["port"])
                 changed = True
-            elif not self.factory.all_peers.get_peer_info(peer_id)["public"]:
-                self.factory.all_peers.set_public_info(peer_id, public["host"], public["port"])
+            elif not self.peers.get_peer_info(peer_id)["public"]:
+                self.peers.set_public_info(peer_id, public["host"], public["port"])
                 changed = True
             
             """
-            if peer_id not in self.factory.all_peers:
-                self.factory.all_peers[peer_id] = {
+            if peer_id not in self.peers:
+                self.peers[peer_id] = {
                     "public": public.copy()
                 }
                 changed = True
-            elif "public" not in self.factory.all_peers[peer_id]:
-                self.factory.all_peers[peer_id]["public"] = public.copy()
+            elif "public" not in self.peers[peer_id]:
+                self.peers[peer_id]["public"] = public.copy()
                 changed = True
             """
 
@@ -254,7 +258,7 @@ class P2PNode(Protocol):
         """Remove a peer from all_peers."""
         peer_id = message.get("peer_id")
         if peer_id:
-            if self.factory.all_peers.remove_peer_info(peer_id):
+            if self.peers.remove_peer_info(peer_id):
                 self.log_public_peer_list(message=f"Peer {peer_id} disconnected. Updated peer list")    
             else:
                 self.logger.warning(f"Peer {peer_id} not found in peer list.")
@@ -300,23 +304,23 @@ class P2PNode(Protocol):
         """Handle lost connection."""
         if self.remote_id:
             peer_id = self.remote_id
-            if self.factory.all_peers.get_peer_info(peer_id):
+            if self.peers.get_peer_info(peer_id):
                 if self.is_initiator:
-                    self.factory.all_peers.remove_peer_info(peer_id,"local")
-                    #del self.factory.all_peers[peer_id]["local"]
+                    self.peers.remove_peer_info(peer_id,"local")
+                    #del self.peers[peer_id]["local"]
                 else:
-                    self.factory.all_peers.remove_peer_info(peer_id,"remote")
-                    #del self.factory.all_peers[peer_id]["remote"]
+                    self.peers.remove_peer_info(peer_id,"remote")
+                    #del self.peers[peer_id]["remote"]
 
                 """
-                if not (self.factory.all_peers[peer_id].get("local",False) or
-                        self.factory.all_peers[peer_id].get("remote",False)):
-                        del self.factory.all_peers[peer_id]
+                if not (self.peers[peer_id].get("local",False) or
+                        self.peers[peer_id].get("remote",False)):
+                        del self.peers[peer_id]
                         """
                 
-                if not (self.factory.all_peers.get_peer_info(peer_id)["local"] or
-                        self.factory.all_peers.get_peer_info(peer_id)["remote"]):
-                    self.factory.all_peers.remove_peer_info(peer_id)
+                if not (self.peers.get_peer_info(peer_id)["local"] or
+                        self.peers.get_peer_info(peer_id)["remote"]):
+                    self.peers.remove_peer_info(peer_id)
                     self.log_public_peer_list(message=f"Peer {peer_id} disconnected. Updated peer list")
                     self.broadcast_remove_peer(peer_id)
             
@@ -333,7 +337,7 @@ class P2PNode(Protocol):
         self.logger.info(
             f"\n{'-'*13}\n{message}:\n" +
             "\n".join(f"id: {pid}, host: {info['public']['host']}, port: {info['public']['port']}" 
-                    for pid, info in self.factory.all_peers.get_all_peers_items() if info["public"]) +
+                    for pid, info in self.peers.get_all_peers_items() if info["public"]) +
             f"\n{'-'*13}"
         )
 
