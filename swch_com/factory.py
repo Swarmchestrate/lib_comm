@@ -1,4 +1,7 @@
 import logging
+import json
+from typing import Optional, Dict, Any, List
+
 from twisted.internet.protocol import Factory
 
 from swch_com.node import P2PNode
@@ -7,7 +10,6 @@ from swch_com.peers import Peers
 class P2PFactory(Factory):
     def __init__(self, peer_id: str, peer_type: str, universe: str, public_ip: str, public_port: str):
         self.peers = Peers()
-        self.node = P2PNode(self, self.peers)
 
         self.seen_messages = set()  # Keep track of processed message IDs
         self.id = peer_id  # Unique ID for this node
@@ -23,17 +25,55 @@ class P2PFactory(Factory):
         self.logger = logging.getLogger(__name__)  # Initialize logger
         self.logger.info(f"Initialized P2PFactory with id: {self.id}, type: {self.type}, universe: {self.universe}, host: {public_ip}, port: {public_port}")
 
-        # Initialize event listeners dictionary
+        self.user_defined_msg_handlers=dict()
+        
         self.event_listeners = {
             'peer_connected': [],
             'peer_disconnected': [],
         }
 
+    def send_message(self, message: dict, peer_transport: Optional[Any] = None) -> None:
+        """Send a message to all connected peers or a specific peer."""
+        message_id = message.get("message_id")
+        if message_id:
+            self.seen_messages.add(message_id)
+        else:
+            self.logger.warning("Message without message_id")
+
+        serialized_message = json.dumps(message) + "\n"
+        data = serialized_message.encode("utf-8")
+
+        if peer_transport:
+            peer_transport.write(data)
+        else:
+            for transport in self.peers.get_all_transports():
+                transport.write(data)
+
+    def send_to_peer(self, peer_id: str, message: dict) -> None:
+        peer_info = self.peers.get_peer_info(peer_id)
+        if not peer_info:
+            self.logger.warning(f"No such peer {peer_id} in registry.")
+            return
+        # Find an active transport (local or remote) for that peer
+        transport = None
+        for loc in ("remote", "local"):
+            info = peer_info.get(loc)
+            if info and "transport" in info:
+                transport = info["transport"]
+                break
+        if not transport:
+            self.logger.warning(f"Peer {peer_id} is not currently connected.")
+            return
+
+        self.send_message(message, transport)
+
+    def broadcast_message(self, message: dict) -> None:
+        self.send_message(message)
 
     def buildProtocol(self, addr):
         """Create a new P2PNode protocol instance"""
-        #self.node = P2PNode(self)  # Pass the factory instance to P2PNode
-        return self.node
+        node = P2PNode(self, self.peers)  # Pass the factory instance to P2PNode
+        return node
 
     def add_event_listener(self, event_name, listener):
         """Register an event listener for a specific event"""

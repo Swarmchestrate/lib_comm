@@ -12,9 +12,22 @@ class Peers:
         """
         self.peers = {}
 
+    def get_all_transports(self):
+        """
+        Return a list of all transport objects from the peers dictionary.
+        We return a list to avoid giving direct access to the dictionary's
+        live values object, thus preventing accidental modifications.
+        """
+        transports = []
+        for peer_info in self.peers.values():
+            for location in ["remote", "local"]:
+                if peer_info[location] and "transport" in peer_info[location]:
+                    transports.append(peer_info[location]["transport"])
+        return transports
+
     def get_all_peers_values(self):
         """
-        Return a list of all the values of the all_peers dictionary.
+        Return a list of all the values of the peers dictionary.
         We return a list to avoid giving direct access to the dictionary's
         live values object, thus preventing accidental modifications.
         """
@@ -22,7 +35,7 @@ class Peers:
 
     def get_all_peers_items(self):
         """
-        Return a list of all the items (key-value pairs) of the all_peers dictionary.
+        Return a list of all the items (key-value pairs) of the peers dictionary.
         We return a list to avoid giving direct access to the dictionary's
         live items view, thus preventing accidental modifications.
         """

@@ -13,16 +13,9 @@ class P2PNode(Protocol):
         self.peers = peers
 
         self.buffer = ""  # Buffer to hold partial messages
-        self.periodic_task: Optional[LoopingCall] = None  # Task to send periodic messages
-        self.heartbeat_task: Optional[LoopingCall] = None  # Task to send heartbeat messages
         self.is_initiator = is_initiator  # Track if this node initiated the connection
         self.remote_id: Optional[str] = None  # ID of the remote peer
         self.logger = logging.getLogger(__name__)  # Initialize logger
-
-        self.user_defined_msg_handlers=dict()
-
-    def register_message_handler(self, message_type, func ):
-        self.user_defined_msg_handlers[message_type] = func
 
     def connectionMade(self):
         """Handle new connection."""
@@ -58,33 +51,6 @@ class P2PNode(Protocol):
             except json.JSONDecodeError as e:
                 self.logger.error(f"Error decoding message: {e}")
 
-    def send_message(self, message: Dict[str, Any], peer_transport: Optional[Any] = None):
-        """Send a message to all connected peers or a specific peer."""
-        message_id = message.get("message_id")
-        if message_id:
-            self.factory.seen_messages.add(message_id)
-        else:
-            self.logger.warning("Message without message_id")
-
-        serialized_message = json.dumps(message) + "\n"
-        data = serialized_message.encode("utf-8")
-
-        if peer_transport:
-            peer_transport.write(data)
-        else:
-            for transport in self.get_all_transports():
-                transport.write(data)
-
-    def get_all_transports(self) -> List[Any]:
-        """Retrieve all connected transports."""
-        transports = []
-        for peer_info in self.peers.get_all_peers_values():
-            for location in ["remote", "local"]:
-                location_info = peer_info.get(location)
-                if location_info and "transport" in location_info:
-                    transports.append(location_info["transport"])
-        return transports
-
     def process_message(self, message: Dict[str, Any]):
         """Handle and forward broadcast messages."""
 
@@ -101,35 +67,22 @@ class P2PNode(Protocol):
 
         message_type = message.get("message_type")
 
-        if hasattr(self, "pong_message") and hasattr(self, "transport"):
-            pong_message = self.pong_message()
-            transport = self.transport
-        else:
-            pong_message = None
-            transport = None
-
         match message_type:
             case "broadcast_peer_list_add":
                 self.update_peer_list(message)
-                self.send_message(message)
+                self.factory.broadcast_message(message)
             case "peer_list_add" | "peer_list_update":
                 self.update_peer_list(message)
             case "peer_info":
                 self.process_peer_info(message)
             case "broadcast_remove_peer":
                 self.remove_peer(message)
-                self.send_message(message)
+                self.factory.broadcast_message(message)
             case "broadcast_message":
-                self.send_message(message)
-            case "ping":
-                self.logger.info(f"{message.get('content', '')}")
-                if pong_message and transport:
-                    self.send_message(pong_message, peer_transport=transport)
-            case "pong":
-                self.logger.info(f"{message.get('content', '')}")
+                self.factory.broadcast_message(message)
             case _:
-                if message_type in self.user_defined_msg_handlers:
-                    func = self.user_defined_msg_handlers[message_type]
+                if message_type in self.factory.user_defined_msg_handlers:
+                    func = self.factory.user_defined_msg_handlers[message_type]
                     func(message.get("peer_id",""),message.get("message_body","")) 
                 else:
                     print("registered handlers: " % self.user_defined_msg_handlers)
@@ -173,8 +126,6 @@ class P2PNode(Protocol):
             if peer_type=="ra":
                 self.send_peer_list(self.transport)
 
-        #self.start_heartbeat()
-
     def broadcast_peer_list(self):
         """Broadcast the known peer list to all connected peers."""
         message_id = str(uuid.uuid4())
@@ -188,7 +139,7 @@ class P2PNode(Protocol):
             "message_id": message_id,
             "peers": peer_list
         }
-        self.send_message(message)
+        self.factory.send_message(message)
 
     def send_peer_list(self, transport):
         message_id = str(uuid.uuid4())
@@ -202,7 +153,7 @@ class P2PNode(Protocol):
             "message_id": message_id,
             "peers": peer_list
         }
-        self.send_message(message, transport)
+        self.factory.send_message(message, transport)
 
     def broadcast_remove_peer(self, peer_id: str):
         """Broadcast a message to all peers to remove a disconnected peer."""
@@ -212,7 +163,7 @@ class P2PNode(Protocol):
             "message_id": message_id,
             "peer_id": peer_id
         }
-        self.send_message(message)
+        self.factory.send_message(message)
 
     def send_welcome_info_to_peer(self):
         """Send peer info to the connected peer."""
@@ -224,7 +175,7 @@ class P2PNode(Protocol):
             "peer_universe": self.factory.universe,
             "peer_type": self.factory.type
         }
-        self.send_message(message, peer_transport=self.transport)
+        self.factory.send_message(message, peer_transport=self.transport)
 
     def update_peer_list(self, message: Dict[str, Any]):
         """Update the known peer list."""
@@ -239,17 +190,6 @@ class P2PNode(Protocol):
             elif not self.peers.get_peer_info(peer_id)["public"]:
                 self.peers.set_public_info(peer_id, public["host"], public["port"])
                 changed = True
-            
-            """
-            if peer_id not in self.peers:
-                self.peers[peer_id] = {
-                    "public": public.copy()
-                }
-                changed = True
-            elif "public" not in self.peers[peer_id]:
-                self.peers[peer_id]["public"] = public.copy()
-                changed = True
-            """
 
         if changed:
             self.log_public_peer_list()
@@ -263,43 +203,6 @@ class P2PNode(Protocol):
             else:
                 self.logger.warning(f"Peer {peer_id} not found in peer list.")
 
-    def pong_message(self) -> Dict[str, Any]:
-        """Construct a pong message."""
-        message_id = str(uuid.uuid4())
-        return {
-            "message_type": "pong",
-            "message_id": message_id,
-            "content": f"Pong from {self.factory.id}"
-        }
-
-    def start_periodic_messages(self, interval: int = 3):
-        """Start sending periodic messages."""
-        def periodic_message():
-            message_id = str(uuid.uuid4())
-            message = {
-                "message_type": "broadcast_message",
-                "message_id": message_id,
-                "content": f"Hello from {self.factory.id}"
-            }
-            self.send_message(message)
-
-        self.periodic_task = LoopingCall(periodic_message)
-        self.periodic_task.start(interval)
-
-    def start_heartbeat(self, interval: int = 10):
-        """Start sending heartbeat messages to check if peers are alive."""
-        def send_ping():
-            message_id = str(uuid.uuid4())
-            message = {
-                "message_type": "ping",
-                "message_id": message_id,
-                "content": f"Ping from {self.factory.id}"
-            }
-            self.send_message(message)
-
-        self.heartbeat_task = LoopingCall(send_ping)
-        self.heartbeat_task.start(interval)
-
     def connectionLost(self, reason):
         """Handle lost connection."""
         if self.remote_id:
@@ -307,28 +210,14 @@ class P2PNode(Protocol):
             if self.peers.get_peer_info(peer_id):
                 if self.is_initiator:
                     self.peers.remove_peer_info(peer_id,"local")
-                    #del self.peers[peer_id]["local"]
                 else:
                     self.peers.remove_peer_info(peer_id,"remote")
-                    #del self.peers[peer_id]["remote"]
-
-                """
-                if not (self.peers[peer_id].get("local",False) or
-                        self.peers[peer_id].get("remote",False)):
-                        del self.peers[peer_id]
-                        """
                 
                 if not (self.peers.get_peer_info(peer_id)["local"] or
                         self.peers.get_peer_info(peer_id)["remote"]):
                     self.peers.remove_peer_info(peer_id)
                     self.log_public_peer_list(message=f"Peer {peer_id} disconnected. Updated peer list")
                     self.broadcast_remove_peer(peer_id)
-            
-                    # Stop periodic tasks if running
-                    if self.periodic_task and self.periodic_task.running:
-                        self.periodic_task.stop()
-                    if self.heartbeat_task and self.heartbeat_task.running:
-                        self.heartbeat_task.stop()
 
                 #update factory peer count
                 self.factory.on_peer_disconnected()

@@ -21,7 +21,7 @@ class SwChResourceAgent():
             public_ip = listen_ip
             public_port = listen_port
 
-        self.factory = P2PFactory(id, universe, type, public_ip,public_port)
+        self.factory = P2PFactory(id, type, universe, public_ip,public_port)
         self.start_server(self.factory,listen_ip,listen_port)
 
         self.factory.add_event_listener('peer_connected', self.handle_peer_connected)
@@ -30,16 +30,13 @@ class SwChResourceAgent():
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
     def register_message_handler(self, message_type, func ):
-        self.factory.node.user_defined_msg_handlers[message_type] = func
+        self.factory.user_defined_msg_handlers[message_type] = func
 
-    def send_message(self, clientid, message):
-        peer_info = self.factory.peers.get_peer_info(clientid)
-        transport = None
-        for location in ["remote", "local"]:
-                location_info = peer_info.get(location)
-                if location_info and "transport" in location_info:
-                    transport = location_info["transport"]
-        self.factory.node.send_message(message, transport)
+    def send_message(self, clientid: str, message: dict):
+        if not clientid:
+            self.factory.broadcast_message(message)
+        else:
+            self.factory.send_to_peer(clientid, message)
 
     def handle_peer_connected(self):
         self.connectionCount += 1
