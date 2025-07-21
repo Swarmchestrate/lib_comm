@@ -15,6 +15,18 @@ kademlia = "*"
 miniupnpc = "*"
 python = "^3.12"
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-twisted = "^1.14.0"
+
+[tool.pytest.ini_options]
+markers = [
+    "twisted: marks tests that involve the Twisted reactor",
+]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
 
 [build-system]
 requires = ["poetry-core"]
