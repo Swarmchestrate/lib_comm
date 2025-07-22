@@ -12,6 +12,18 @@ class Peers:
         """
         self.peers = {}
 
+    def get_all_public_info(self):
+        """
+        Return a list of all public information dictionaries from the peers dictionary.
+        We return a list to avoid giving direct access to the dictionary's
+        live values object, thus preventing accidental modifications.
+        """
+        public_info = []
+        for peer_info in self.peers.values():
+            if "public" in peer_info and peer_info["public"]:
+                public_info.append(peer_info["public"])
+        return public_info
+
     def get_all_transports(self):
         """
         Return a list of all transport objects from the peers dictionary.

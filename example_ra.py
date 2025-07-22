@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from twisted.internet.task import LoopingCall
 
-from swch_com.swch_com import SwChResourceAgent
+from swch_com.swch_com import SwchAgent
 
 
 if __name__ == "__main__":
@@ -61,7 +61,7 @@ if __name__ == "__main__":
         peer_id = str(uuid.uuid4())
 
     
-    com = SwChResourceAgent(peer_id,"swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
+    com = SwchAgent(peer_id,"swch", "ra", listen_ip, listen_port, public_ip, public_port, 1)
         
     # If join is provided, connect to the specified peer
     if args.join:
@@ -74,6 +74,7 @@ if __name__ == "__main__":
 
         com.connect_to_peer(join_ip,join_port)
 
+    """
     def handle_ping(sender_id, message):
         message_id = str(uuid.uuid4())
         logging.info(f"Received ping from {sender_id}")
@@ -103,7 +104,7 @@ if __name__ == "__main__":
 
     heartbeat_task = LoopingCall(send_ping)
     heartbeat_task.start(2)
-
+    """
     com.run()
 
     """

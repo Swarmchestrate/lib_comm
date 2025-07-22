@@ -192,6 +192,7 @@ class P2PNode(Protocol):
                 changed = True
 
         if changed:
+            self.broadcast_peer_list()
             self.log_public_peer_list()
 
     def remove_peer(self, message: Dict[str, Any]):
