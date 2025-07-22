@@ -183,16 +183,20 @@ class P2PNode(Protocol):
         changed = False
 
         for peer_id, public in peers:
-            if not self.peers.get_peer_info(peer_id):
-                self.logger.info("Recieved new peer public info")
-                self.peers.set_public_info(peer_id, public["host"], public["port"])
-                changed = True
-            elif not self.peers.get_peer_info(peer_id)["public"]:
+            peer_info = self.peers.get_peer_info(peer_id)
+
+            # If we have no info yet, or we have info but no public data
+            if not peer_info or not peer_info.get("public"):
+                self.logger.info("Received new peer public info")
                 self.peers.set_public_info(peer_id, public["host"], public["port"])
                 changed = True
 
         if changed:
+            # Emit peer discovered event
+            self.factory.add_peer_discovered_event(peer_id)
+            #Propagate peer list changes
             self.broadcast_peer_list()
+            # Log the updated peer list
             self.log_public_peer_list()
 
     def remove_peer(self, message: Dict[str, Any]):

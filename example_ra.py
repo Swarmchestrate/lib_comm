@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from twisted.internet.task import LoopingCall
 
-from swch_com.swch_com import SwchAgent
+from swch_com.swchagent import SwchAgent
 
 
 if __name__ == "__main__":
@@ -72,7 +72,7 @@ if __name__ == "__main__":
             logging.error("Invalid format for --join. Expected format is ip:port")
             sys.exit(1)
 
-        com.connect_to_peer(join_ip,join_port)
+        com.connect(join_ip,join_port)
 
     """
     def handle_ping(sender_id, message):

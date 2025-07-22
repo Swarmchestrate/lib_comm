@@ -147,6 +147,13 @@ class Peers:
                 return True
             else:
                 return False
+    
+    def clear_peers(self) -> None:
+        """
+        Clear all peer information from the data structure.
+        This will remove all entries in the peers dictionary.
+        """
+        self.peers.clear()
 
     def __str__(self):
         """

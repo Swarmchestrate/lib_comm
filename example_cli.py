@@ -1,4 +1,4 @@
-from swch_com.swch_com import SwChClient
+from swch_com.swchagent import SwChClient
 
 import logging
 import argparse

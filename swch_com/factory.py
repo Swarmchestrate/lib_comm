@@ -30,6 +30,7 @@ class P2PFactory(Factory):
         self.event_listeners = {
             'peer_connected': [],
             'peer_disconnected': [],
+            'peer_discovered': []  # Add new event type
         }
 
     def send_message(self, message: dict, peer_transport: Optional[Any] = None) -> None:
@@ -96,3 +97,8 @@ class P2PFactory(Factory):
         # Trigger the 'peer_disconnected' event
         for listener in self.event_listeners.get('peer_disconnected', []):
             listener()
+
+    def add_peer_discovered_event(self, peer_id: str):
+        """Trigger the peer discovered event"""
+        for listener in self.event_listeners.get('peer_discovered', []):
+            listener(peer_id)
