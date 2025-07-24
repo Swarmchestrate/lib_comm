@@ -29,11 +29,30 @@ class P2PFactory(Factory):
         self.user_defined_msg_handlers=dict()
         
         self.event_listeners = {
-            'peer_connected': [],
-            'peer_disconnected': [],
-            'peer_discovered': [],
-            'message': []  # Add message event type
+            'peer:connected': [],
+            'peer:disconnected': [],
+            'peer:discovered': [],
+            'message': []
         }
+
+        self._connection_count = 0  # Private connection counter
+
+    def _increment_connection_count(self):
+        """Private method to increment connection count"""
+        self._connection_count += 1
+        self.logger.info(f"Connection established. Connection count: {self._connection_count}")
+
+    def _decrement_connection_count(self):
+        """Private method to decrement connection count"""
+        self._connection_count -= 1
+        self.logger.info(f"Connection lost. Connection count: {self._connection_count}")
+        if self._connection_count == 0:
+            self.peers.clear_peers()
+            self.logger.info("Disconnected from all peers. Peer list cleared")
+
+    def get_connection_count(self) -> int:
+        """Private method to get current connection count"""
+        return self._connection_count
 
     def send_message(self, message: dict, peer_transport: Optional[Any] = None) -> None:
         """Send a message to all connected peers or a specific peer."""
@@ -101,21 +120,28 @@ class P2PFactory(Factory):
             self.event_listeners[event_name].remove(listener)
 
     def on_peer_connected(self):
-        # Trigger the 'peer_connected' event
-        for listener in self.event_listeners.get('peer_connected', []):
+        """Trigger the peer:connected event"""
+        self._increment_connection_count()
+        for listener in self.event_listeners.get('peer:connected', []):
             listener()
 
     def on_peer_disconnected(self):
-        # Trigger the 'peer_disconnected' event
-        for listener in self.event_listeners.get('peer_disconnected', []):
+        """Trigger the peer:disconnected event"""
+        self._decrement_connection_count()
+        for listener in self.event_listeners.get('peer:disconnected', []):
             listener()
 
     def add_peer_discovered_event(self, peer_id: str):
-        """Trigger the peer discovered event"""
-        for listener in self.event_listeners.get('peer_discovered', []):
+        """Trigger the peer:discovered event"""
+        for listener in self.event_listeners.get('peer:discovered', []):
             listener(peer_id)
 
     def emit_message(self, peer_id: str, message: dict):
-        """Trigger the message event"""
+        """Trigger the message event with formatted payload"""
+        event_data = {
+            'peer_id': peer_id,
+            'message_type': message.get('message_type'),
+            'payload': message.get('payload')
+        }
         for listener in self.event_listeners.get('message', []):
-            listener(peer_id, message)
+            listener(event_data)

@@ -41,8 +41,8 @@ def test_two_agents_connection(agent_factory):
     yield deferLater(reactor, 1, lambda: None)
 
     # 3. Both agents should have exactly one connection established
-    assert a1.connectionCount == 1, "a1 did not register the connection"
-    assert a2.connectionCount == 1, "a2 did not register the connection"
+    assert a1.get_connection_count() == 1, "a1 did not register the connection"
+    assert a2.get_connection_count() == 1, "a2 did not register the connection"
     # 4. Each agent's Peers registry should have an entry for the other
     peer_info_1 = a1.factory.peers.get_peer_info(a2.peer_id)
     peer_info_2 = a2.factory.peers.get_peer_info(a1.peer_id)
@@ -65,9 +65,9 @@ def test_three_agents_connection_1(agent_factory):
     yield deferLater(reactor, 1, lambda: None)
 
     # initial connectivity checks
-    assert a1.connectionCount == 1, "a1 should have one outgoing"
-    assert a2.connectionCount == 1, "a2 should have one outgoing"
-    assert a3.connectionCount == 2, "a3 should have two incoming"
+    assert a1.get_connection_count() == 1, "a1 should have one outgoing"
+    assert a2.get_connection_count() == 1, "a2 should have one outgoing"
+    assert a3.get_connection_count() == 2, "a3 should have two incoming"
 
     # --- validate peer-info lists via get_all_peers_items() ---
     agents = {a1.peer_id: a1, a2.peer_id: a2, a3.peer_id: a3}
@@ -128,10 +128,10 @@ def test_three_agents_connection_2(agent_factory):
     yield deferLater(reactor, 1, lambda: None)
 
     # each peer should see exactly one incoming on their side
-    assert a2.connectionCount == 1
-    assert a3.connectionCount == 1
+    assert a2.get_connection_count() == 1
+    assert a3.get_connection_count() == 1
     # a1 made two outgoing connections
-    assert a1.connectionCount == 2
+    assert a1.get_connection_count() == 2
 
     peer_info_a1 = a1.factory.peers.get_all_public_info()
     peer_info_a2 = a2.factory.peers.get_all_public_info()
@@ -158,11 +158,11 @@ def test_three_agents_connection_3(agent_factory):
     yield deferLater(reactor, 1, lambda: None)
 
     # a1 should have one outgoing connection to a2
-    assert a1.connectionCount == 1
+    assert a1.get_connection_count() == 1
     # a3 should have one incoming connection from a2
-    assert a3.connectionCount == 1
+    assert a3.get_connection_count() == 1
     # a2 should have two connections: one incoming from a1 and one outgoing to a3
-    assert a2.connectionCount == 2
+    assert a2.get_connection_count() == 2
 
     peer_info_a1 = a1.factory.peers.get_all_public_info()
     peer_info_a2 = a2.factory.peers.get_all_public_info()
@@ -190,11 +190,11 @@ def test_three_agents_connection_4(agent_factory):
     yield deferLater(reactor, 1, lambda: None)
 
     # a1 should have two connections: one incoming from a3 and one outgoing to a2
-    assert a1.connectionCount == 2
+    assert a1.get_connection_count() == 2
     # a2 should have two connections: one incoming from a1 and one outgoing to a3
-    assert a2.connectionCount == 2
+    assert a2.get_connection_count() == 2
     # a3 should have two connections: one incoming from a2 and one outgoing to a1
-    assert a3.connectionCount == 2
+    assert a3.get_connection_count() == 2
 
     peer_info_a1 = a1.factory.peers.get_all_public_info()
     peer_info_a2 = a2.factory.peers.get_all_public_info()
@@ -279,9 +279,9 @@ def test_indirect_message_exchange(agent_factory):
     yield deferLater(reactor, 0.5, lambda: None)
 
     # Verify initial connectivity
-    assert a1.connectionCount == 1, "a1 should have one connection"
-    assert a2.connectionCount == 2, "a2 should have two connections"
-    assert a3.connectionCount == 1, "a3 should have one connection"
+    assert a1.get_connection_count() == 1, "a1 should have one connection"
+    assert a2.get_connection_count() == 2, "a2 should have two connections"
+    assert a3.get_connection_count() == 1, "a3 should have one connection"
 
     # Try sending message from a1 to a3 (they're not directly connected)
     test_payload_1 = {"content": "Hello from a1 to a3!"}
@@ -350,7 +350,7 @@ def test_peer_connected_event(agent_factory):
     yield deferLater(reactor, 0.5, lambda: None)
 
     assert connection_count == 1, "Should have received exactly one connection event"
-    assert a1.connectionCount == 1, "a1 should have one active connection"
+    assert a1.get_connection_count() == 1, "a1 should have one active connection"
 
 @pytest_twisted.inlineCallbacks
 def test_peer_disconnected_event(agent_factory):
@@ -371,7 +371,7 @@ def test_peer_disconnected_event(agent_factory):
     yield deferLater(reactor, 0.5, lambda: None)
     
     # Verify initial connection
-    assert a1.connectionCount == 1, "Initial connection should be established"
+    assert a1.get_connection_count() == 1, "Initial connection should be established"
     
     # Disconnect from peer
     a1.disconnect(a2.peer_id)
@@ -380,7 +380,7 @@ def test_peer_disconnected_event(agent_factory):
     yield deferLater(reactor, 0.5, lambda: None)
 
     assert disconnection_count == 1, "Should have received exactly one disconnection event"
-    assert a1.connectionCount == 0, "a1 should have no active connections"
+    assert a1.get_connection_count() == 0, "a1 should have no active connections"
 
 @pytest_twisted.inlineCallbacks
 def test_on_message_event(agent_factory):
