@@ -1,5 +1,6 @@
 import logging
 import json
+import uuid
 from typing import Optional, Dict, Any, List
 
 from twisted.internet.protocol import Factory
@@ -30,16 +31,27 @@ class P2PFactory(Factory):
         self.event_listeners = {
             'peer_connected': [],
             'peer_disconnected': [],
-            'peer_discovered': []  # Add new event type
+            'peer_discovered': [],
+            'message': []  # Add message event type
         }
 
     def send_message(self, message: dict, peer_transport: Optional[Any] = None) -> None:
         """Send a message to all connected peers or a specific peer."""
-        message_id = message.get("message_id")
-        if message_id:
-            self.seen_messages.add(message_id)
+        if "message_id" in message:
+            self.seen_messages.add(message["message_id"])
         else:
-            self.logger.warning("Message without message_id")
+            self.logger.warning("Message without message_id generating id...")
+            message_id = str(uuid.uuid4())
+            message["message_id"] = message_id
+            self.seen_messages.add(message_id)
+
+        # Ensure the message has a type and peer_id
+        if "message_type" not in message:
+            self.logger.error("Message must have a 'message_type' field.")
+            return
+        if "peer_id" not in message:
+            self.logger.warning("Message must have a 'peer_id' field. Setting to factory ID.")
+            message["peer_id"] = self.id
 
         serialized_message = json.dumps(message) + "\n"
         data = serialized_message.encode("utf-8")
@@ -102,3 +114,8 @@ class P2PFactory(Factory):
         """Trigger the peer discovered event"""
         for listener in self.event_listeners.get('peer_discovered', []):
             listener(peer_id)
+
+    def emit_message(self, peer_id: str, message: dict):
+        """Trigger the message event"""
+        for listener in self.event_listeners.get('message', []):
+            listener(peer_id, message)

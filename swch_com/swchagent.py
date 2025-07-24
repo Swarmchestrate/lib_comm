@@ -35,22 +35,38 @@ class SwchAgent():
         self.event_handlers = {
             'peer:discovered': [],
             'peer:connected': [],
-            'peer:disconnected': []
+            'peer:disconnected': [],
+            'message': []
         }
 
         # Register internal event handlers
         self.factory.add_event_listener('peer_discovered', lambda peer_id: self._emit('peer:discovered', peer_id))
         self.factory.add_event_listener('peer_connected', lambda: self._emit('peer:connected', None))
         self.factory.add_event_listener('peer_disconnected', lambda: self._emit('peer:disconnected', None))
+        self.factory.add_event_listener('message', lambda peer_id, message: self._emit('message', {
+            'peer_id': peer_id,
+            'message_type': message.get('message_type'),
+            'payload': message.get('payload')
+        }))
 
     def register_message_handler(self, message_type, func ):
         self.factory.user_defined_msg_handlers[message_type] = func
 
-    def send_message(self, clientid: str, message: dict):
-        if not clientid:
-            self.factory.broadcast_message(message)
-        else:
-            self.factory.send_to_peer(clientid, message)
+    def send(self, peer_id: str, message_type: str, payload: dict):
+        """Send a message to a specific peer with a message type and payload."""
+        message = {
+            'message_type': message_type,
+            'payload': payload
+        }
+        self.factory.send_to_peer(peer_id, message)
+
+    def broadcast(self, message_type: str, payload: dict):
+        """Broadcast a message to all connected peers with a message type and payload."""
+        message = {
+            'message_type': message_type,
+            'payload': payload
+        }
+        self.factory.broadcast_message(message)
 
     def handle_peer_connected(self):
         self.connectionCount += 1

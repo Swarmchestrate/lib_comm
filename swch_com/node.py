@@ -83,10 +83,13 @@ class P2PNode(Protocol):
             case _:
                 if message_type in self.factory.user_defined_msg_handlers:
                     func = self.factory.user_defined_msg_handlers[message_type]
-                    func(message.get("peer_id",""),message.get("message_body","")) 
+                    func(message.get("peer_id",""), message.get("payload",""))
                 else:
-                    print("registered handlers: " % self.user_defined_msg_handlers)
                     self.logger.warning(f"Unknown message type received: {message_type}")
+                    self.logger.warning(f"Message content: {message}")
+
+                # Emit message event
+                self.factory.emit_message(message.get("peer_id", ""), message)
 
     def process_peer_info(self, message: Dict[str, Any]):
         """Update peer info upon receiving process_peer_info message."""
@@ -137,6 +140,7 @@ class P2PNode(Protocol):
         message = {
             "message_type": "broadcast_peer_list_add",
             "message_id": message_id,
+            "peer_id": self.factory.id,
             "peers": peer_list
         }
         self.factory.send_message(message)
@@ -151,6 +155,7 @@ class P2PNode(Protocol):
         message = {
             "message_type": "peer_list_add",
             "message_id": message_id,
+            "peer_id": self.factory.id,
             "peers": peer_list
         }
         self.factory.send_message(message, transport)
@@ -161,6 +166,7 @@ class P2PNode(Protocol):
         message = {
             "message_type": "broadcast_remove_peer",
             "message_id": message_id,
+            "peer_id": self.factory.id,
             "peer_id": peer_id
         }
         self.factory.send_message(message)

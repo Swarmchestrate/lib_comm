@@ -209,36 +209,107 @@ def test_three_agents_connection_4(agent_factory):
     assert sorted_a1 == sorted_a2 == sorted_a3, "Peer information lists are not identical"
 
 @pytest_twisted.inlineCallbacks
-def test_custom_message_exchange(agent_factory):
-    a1, a2 = agent_factory(2)
-    received = []
-
-    # Register handler on a2 for "custom_type"
-    def on_custom(src_id, body):
-        received.append((src_id, body))
-
-    a2.register_message_handler("custom_type", on_custom)
-
-    # Establish connection first
-    a1.connect(a2.public_ip, a2.public_port)
-    yield deferLater(reactor, 0.2, lambda: None)
-
-    # Send a custom message from a1 → a2
-    msg = {
-        "message_type": "custom_type",
-        "message_id": str(uuid.uuid4()),
-        "peer_id": a1.peer_id,
-        "message_body": {"content": "Hello, world!"}
+def test_custom_message_exchange_1(agent_factory):
+    # Create 3 agents
+    a1, a2, a3 = agent_factory(3)
+    received_messages = {
+        a1.peer_id: [],
+        a2.peer_id: [],
+        a3.peer_id: []
     }
-    a1.send_message(a2.peer_id, msg)
 
-    # Wait for the message to arrive
-    yield deferLater(reactor, 0.2, lambda: None)
+    # Register message event handlers for all agents
+    def create_message_event_handler(agent_id):
+        def on_message(data):
+            received_messages[agent_id].append(data)
+        return on_message
 
-    assert len(received) == 1, "Did not receive exactly one message"
-    sender_id, body = received[0]
-    assert sender_id == a1.peer_id
-    assert body == {"content": "Hello, world!"}
+    for agent in [a1, a2, a3]:
+        agent.on('message', create_message_event_handler(agent.peer_id))
+
+    # Connect agents in a triangle
+    a1.connect(a2.public_ip, a2.public_port)
+    a2.connect(a3.public_ip, a3.public_port)
+    
+    # Wait for connections to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Send a message from a1 to a2
+    test_payload = {"content": "Hello, agent 2!"}
+    a1.send(a2.peer_id, "custom_type", test_payload)
+
+    # Wait for message to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify only a2 received the message
+    assert len(received_messages[a1.peer_id]) == 0, "a1 should not receive any messages"
+    assert len(received_messages[a2.peer_id]) == 1, "a2 should receive exactly one message"
+    assert len(received_messages[a3.peer_id]) == 0, "a3 should not receive any messages"
+
+    # Verify message contents
+    received = received_messages[a2.peer_id][0]
+    assert received['peer_id'] == a1.peer_id, "Message should be from a1"
+    assert received['message_type'] == "custom_type", "Message type should match"
+    assert received['payload'] == test_payload, "Message payload should match"
+
+@pytest_twisted.inlineCallbacks
+def test_indirect_message_exchange(agent_factory):
+    # Create 3 agents in a linear topology: a1 <-> a2 <-> a3
+    a1, a2, a3 = agent_factory(3)
+    received_messages = {
+        a1.peer_id: [],
+        a2.peer_id: [],
+        a3.peer_id: []
+    }
+
+    # Register message event handlers for all agents
+    def create_message_event_handler(agent_id):
+        def on_message(data):
+            received_messages[agent_id].append(data)
+        return on_message
+
+    for agent in [a1, a2, a3]:
+        agent.on('message', create_message_event_handler(agent.peer_id))
+
+    # Connect agents linearly: a1 -> a2 -> a3
+    a1.connect(a2.public_ip, a2.public_port)
+    a2.connect(a3.public_ip, a3.public_port)
+    
+    # Wait for connections to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify initial connectivity
+    assert a1.connectionCount == 1, "a1 should have one connection"
+    assert a2.connectionCount == 2, "a2 should have two connections"
+    assert a3.connectionCount == 1, "a3 should have one connection"
+
+    # Try sending message from a1 to a3 (they're not directly connected)
+    test_payload_1 = {"content": "Hello from a1 to a3!"}
+    a1.send(a3.peer_id, "indirect_message", test_payload_1)
+
+    # Try sending message from a3 to a1 (reverse direction)
+    test_payload_2 = {"content": "Hello from a3 to a1!"}
+    a3.send(a1.peer_id, "indirect_message", test_payload_2)
+
+    # Wait for messages to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify a3 received the message from a1
+    assert len(received_messages[a3.peer_id]) == 1, "a3 should receive exactly one message"
+    received_by_a3 = received_messages[a3.peer_id][0]
+    assert received_by_a3['peer_id'] == a1.peer_id, "Message should be from a1"
+    assert received_by_a3['message_type'] == "indirect_message", "Message type should match"
+    assert received_by_a3['payload'] == test_payload_1, "Message payload should match"
+
+    # Verify a1 received the message from a3
+    assert len(received_messages[a1.peer_id]) == 1, "a1 should receive exactly one message"
+    received_by_a1 = received_messages[a1.peer_id][0]
+    assert received_by_a1['peer_id'] == a3.peer_id, "Message should be from a3"
+    assert received_by_a1['message_type'] == "indirect_message", "Message type should match"
+    assert received_by_a1['payload'] == test_payload_2, "Message payload should match"
+
+    # Verify a2 (intermediary) didn't receive any messages as final recipient
+    assert len(received_messages[a2.peer_id]) == 0, "a2 should not receive any messages as final recipient"
 
 @pytest_twisted.inlineCallbacks
 def test_peer_discovered_event(agent_factory):
@@ -310,3 +381,38 @@ def test_peer_disconnected_event(agent_factory):
 
     assert disconnection_count == 1, "Should have received exactly one disconnection event"
     assert a1.connectionCount == 0, "a1 should have no active connections"
+
+@pytest_twisted.inlineCallbacks
+def test_on_message_event(agent_factory):
+    # Create 2 agents
+    a1, a2 = agent_factory(2)
+    received_message = None
+
+    # Register on:message event handler
+    def on_message(data):
+        nonlocal received_message
+        received_message = data
+
+    a2.on('message', on_message)
+
+    # Connect agents
+    a1.connect(a2.public_ip, a2.public_port)
+    
+    # Wait for connection to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Send a test message
+    test_payload = {
+        "content": "Test message",
+        "timestamp": 123456789
+    }
+    a1.send(a2.peer_id, "test_message", test_payload)
+
+    # Wait for message processing
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify message was received and event handler was triggered
+    assert received_message is not None, "Message event handler was not triggered"
+    assert received_message['peer_id'] == a1.peer_id, "Unexpected sender ID"
+    assert received_message['message_type'] == "test_message", "Wrong message type"
+    assert received_message['payload'] == test_payload, "Message payload does not match"
