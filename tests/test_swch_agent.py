@@ -96,23 +96,23 @@ def test_three_agents_connection_1(agent_factory):
                 f"expected {peer.public_port}, got {pub.get('port')}"
             )
 
-    # --- now test disconnect behavior ---
-    # a1 drops both a2 and a3
-    a1.disconnect(a3.peer_id)
+    # --- now test shutdown behavior ---
+    # a2 drops both a1 and a3
+    a2.shutdown()
 
     # allow disconnections to propagate
     yield deferLater(reactor, 1, lambda: None)
 
-    # a2 & a3 should have forgotten about a1
-    for other in (a2, a3):
+    # a1 & a3 should have forgotten about a2
+    for other in (a1, a3):
         items = other.factory.peers.get_all_peers_items()
         ids   = {pid for pid, _ in items}
-        assert a1.peer_id not in ids, (
-            f"{other.peer_id} still has {a1.peer_id} in its peers: {ids}"
+        assert a2.peer_id not in ids, (
+            f"{other.peer_id} still has {a2.peer_id} in its peers: {ids}"
         )
 
-    # a1 should have an empty peers dict
-    assert not a1.factory.peers.get_all_peers_items(), \
+    # a2 should have an empty peers dict
+    assert not a2.factory.peers.get_all_peers_items(), \
         f"{a1.peer_id} did not clear its peers after disconnect"
 
 @pytest_twisted.inlineCallbacks
@@ -489,3 +489,60 @@ def test_message_event(agent_factory):
     assert received_message['peer_id'] == a1.peer_id, "Unexpected sender ID"
     assert received_message['message_type'] == "test_message", "Wrong message type"
     assert received_message['payload'] == test_payload, "Message payload does not match"
+
+@pytest_twisted.inlineCallbacks
+def test_rejoin_behaviour(agent_factory):
+    # Create 3 agents
+    a1, a2, a3 = agent_factory(3)
+    received_messages = {
+        a1.peer_id: [],
+        a2.peer_id: [],
+        a3.peer_id: []
+    }
+
+    # Register message event handlers for all agents
+    def create_message_event_handler(agent_id):
+        def on_message(data):
+            received_messages[agent_id].append(data)
+        return on_message
+
+    for agent in [a1, a2, a3]:
+        agent.on('message', create_message_event_handler(agent.peer_id))
+
+    # Connect agents in a triangle
+    a1.connect(a2.public_ip, a2.public_port)
+    a2.connect(a3.public_ip, a3.public_port)
+    
+    # Wait for connections to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Send a message from a1 to a3
+    test_payload = {"content": "Hello, agent 3!"}
+    a1.send(a3.peer_id, "custom_type", test_payload)
+
+    # Wait for message to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify a3 received the message
+    assert len(received_messages[a3.peer_id]) == 1, "a3 should receive exactly one message"
+
+    # --- now test after shutdown behavior ---
+    # a2 drops both a1 and a3
+    a2.shutdown()
+
+    # allow disconnection to propagate
+    yield deferLater(reactor, 1, lambda: None)
+
+    # a1 and a3 should have at least one connection
+    assert a1.get_connection_count() >= 1, "a1 should still have at least one connection to a3"
+    assert a3.get_connection_count() >= 1, "a3 should still have at least one connection to a1"
+
+    # Send a message from a1 to a3 again
+    test_payload_2 = {"content": "Hello again, agent 3!"}
+    a1.send(a3.peer_id, "custom_type", test_payload_2)
+
+    # Wait for message to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify a3 recieved the message
+    assert len(received_messages[a3.peer_id]) == 2, "a3 should receive exactly two messages"

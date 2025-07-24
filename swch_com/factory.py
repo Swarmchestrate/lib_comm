@@ -51,9 +51,6 @@ class P2PFactory(Factory):
         """Private method to decrement connection count"""
         self._connection_count -= 1
         self.logger.info(f"Connection lost. Connection count: {self._connection_count}")
-        if self._connection_count == 0:
-            self.peers.clear_peers()
-            self.logger.info("Disconnected from all peers. Peer list cleared")
 
     def get_connection_count(self) -> int:
         """Private method to get current connection count"""

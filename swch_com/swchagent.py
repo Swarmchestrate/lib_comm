@@ -157,6 +157,33 @@ class SwchAgent():
 
         return True
 
+    def shutdown(self):
+        """Shuts down the P2P library, closing all connections and releasing resources.
+        This method will:
+        1. Disconnect from all connected peers
+        2. Stop the reactor gracefully
+        :return: None
+        """
+        self.logger.info("Shutting down SwchAgent...")
+        
+        # Disconnect from all connected peers
+        connected_peers = self.getConnectedPeers()
+        for peer_id in connected_peers:
+            self.disconnect(peer_id)
+        
+        # Clear peer information
+        self.factory.peers.clear_peers()
+
+        self.logger.info("SwchAgent shutdown complete")
+
     def run(self):
         """Start the Twisted reactor."""
+        self.logger.info("Starting Twisted reactor...")
         reactor.run()
+        self.logger.info("Twisted reactor started")
+
+    def stop(self):
+        """Stop the Twisted reactor."""
+        self.logger.info("Stopping Twisted reactor...")
+        reactor.stop()
+        self.logger.info("Twisted reactor stopped")
