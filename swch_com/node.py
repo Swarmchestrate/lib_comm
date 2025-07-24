@@ -53,8 +53,8 @@ class P2PNode(Protocol):
 
     def process_message(self, message: Dict[str, Any]):
         """Handle and forward broadcast messages."""
-
         message_id = message.get("message_id")
+        target_id = message.get("target_id")
         
         if not message_id:
             self.logger.warning("Received message without message_id")
@@ -70,17 +70,27 @@ class P2PNode(Protocol):
         match message_type:
             case "broadcast_peer_list_add":
                 self.update_peer_list(message)
-                self.factory.broadcast_message(message)
+                self.factory.send_message(message)
             case "peer_list_add" | "peer_list_update":
                 self.update_peer_list(message)
             case "peer_info":
                 self.process_peer_info(message)
             case "broadcast_remove_peer":
                 self.remove_peer(message)
-                self.factory.broadcast_message(message)
-            case "broadcast_message":
-                self.factory.broadcast_message(message)
+                self.factory.send_message(message)
+            case "send_message":
+                self.factory.send_message(message)
             case _:
+                # Forward message if we're not the target or not broadcast
+                if target_id not in ("*", self.factory.id):
+                    self.factory.send_to_peer(target_id, message)
+                    return
+
+                # Forward message if it is a broadcast
+                if target_id == "*":
+                    self.factory.send_message(message)
+
+                # Handle message since it must be a broadcast or targeted user-defined message
                 if message_type in self.factory.user_defined_msg_handlers:
                     func = self.factory.user_defined_msg_handlers[message_type]
                     func(message.get("peer_id",""), message.get("payload",""))

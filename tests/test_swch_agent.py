@@ -312,6 +312,79 @@ def test_indirect_message_exchange(agent_factory):
     assert len(received_messages[a2.peer_id]) == 0, "a2 should not receive any messages as final recipient"
 
 @pytest_twisted.inlineCallbacks
+def test_broadcast_message_exchange(agent_factory):
+    # Create 3 agents
+    a1, a2, a3 = agent_factory(3)
+    received_messages = {
+        a1.peer_id: [],
+        a2.peer_id: [],
+        a3.peer_id: []
+    }
+
+    # Register message event handlers for all agents
+    def create_message_event_handler(agent_id):
+        def on_message(data):
+            received_messages[agent_id].append(data)
+        return on_message
+
+    for agent in [a1, a2, a3]:
+        agent.on('message', create_message_event_handler(agent.peer_id))
+
+    # Connect agents in a triangle
+    a1.connect(a2.public_ip, a2.public_port)
+    a2.connect(a3.public_ip, a3.public_port)
+    
+    # Wait for connections to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify initial connectivity
+    assert a1.get_connection_count() == 1, "a1 should have one connection"
+    assert a2.get_connection_count() == 2, "a2 should have two connections"
+    assert a3.get_connection_count() == 1, "a3 should have one connection"
+
+    # Broadcast a message from a1
+    test_payload = {"content": "Broadcast message from a1"}
+    a1.broadcast("broadcast_message", test_payload)
+
+    # Wait for messages to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify both a2 and a3 received the broadcast message
+    assert len(received_messages[a1.peer_id]) == 0, "a1 should not receive its own broadcast"
+    assert len(received_messages[a2.peer_id]) == 1, "a2 should receive exactly one message"
+    assert len(received_messages[a3.peer_id]) == 1, "a3 should receive exactly one message"
+
+    # Verify message contents for a2
+    received_by_a2 = received_messages[a2.peer_id][0]
+    assert received_by_a2['peer_id'] == a1.peer_id, "Message should be from a1"
+    assert received_by_a2['message_type'] == "broadcast_message", "Message type should match"
+    assert received_by_a2['payload'] == test_payload, "Message payload should match"
+
+    # Verify message contents for a3
+    received_by_a3 = received_messages[a3.peer_id][0]
+    assert received_by_a3['peer_id'] == a1.peer_id, "Message should be from a1"
+    assert received_by_a3['message_type'] == "broadcast_message", "Message type should match"
+    assert received_by_a3['payload'] == test_payload, "Message payload should match"
+
+    # Test broadcast from a different agent (a3)
+    test_payload_2 = {"content": "Broadcast message from a3"}
+    a3.broadcast("broadcast_message", test_payload_2)
+
+    # Wait for messages to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify a1 and a2 received the second broadcast
+    assert len(received_messages[a1.peer_id]) == 1, "a1 should receive exactly one message"
+    assert len(received_messages[a2.peer_id]) == 2, "a2 should receive exactly two messages"
+    assert len(received_messages[a3.peer_id]) == 1, "a3 should still have one message"
+
+    # Verify message contents from second broadcast
+    received_by_a1 = received_messages[a1.peer_id][0]
+    assert received_by_a1['peer_id'] == a3.peer_id, "Message should be from a3"
+    assert received_by_a1['message_type'] == "broadcast_message", "Message type should match"
+    assert received_by_a1['payload'] == test_payload_2, "Message payload should match"
+
+@pytest_twisted.inlineCallbacks
 def test_peer_discovered_event(agent_factory):
     a1, a2 = agent_factory(2)
     discovered_peers = []
@@ -383,7 +456,7 @@ def test_peer_disconnected_event(agent_factory):
     assert a1.get_connection_count() == 0, "a1 should have no active connections"
 
 @pytest_twisted.inlineCallbacks
-def test_on_message_event(agent_factory):
+def test_message_event(agent_factory):
     # Create 2 agents
     a1, a2 = agent_factory(2)
     received_message = None

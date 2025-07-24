@@ -37,6 +37,11 @@ class P2PFactory(Factory):
 
         self._connection_count = 0  # Private connection counter
 
+    def buildProtocol(self, addr):
+        """Create a new P2PNode protocol instance"""
+        node = P2PNode(self, self.peers)  # Pass the factory instance to P2PNode
+        return node
+    
     def _increment_connection_count(self):
         """Private method to increment connection count"""
         self._connection_count += 1
@@ -64,7 +69,7 @@ class P2PFactory(Factory):
             message["message_id"] = message_id
             self.seen_messages.add(message_id)
 
-        # Ensure the message has a type and peer_id
+        # Ensure the message has required fields
         if "message_type" not in message:
             self.logger.error("Message must have a 'message_type' field.")
             return
@@ -82,10 +87,19 @@ class P2PFactory(Factory):
                 transport.write(data)
 
     def send_to_peer(self, peer_id: str, message: dict) -> None:
+        """Send a message to a specific peer identified by peer_id.
+        If the peer is not connected, the message will be sent to all connected peers.
+        :param peer_id: Identifier for the peer.
+        :param message: The message to send, which must include 'message_type' and 'payload'.
+        """
+        # Ensure target_id is set
+        message["target_id"] = peer_id
+        
         peer_info = self.peers.get_peer_info(peer_id)
         if not peer_info:
             self.logger.warning(f"No such peer {peer_id} in registry.")
             return
+
         # Find an active transport (local or remote) for that peer
         transport = None
         for loc in ("remote", "local"):
@@ -94,18 +108,11 @@ class P2PFactory(Factory):
                 transport = info["transport"]
                 break
         if not transport:
-            self.logger.warning(f"Peer {peer_id} is not currently connected.")
-            return
-
-        self.send_message(message, transport)
-
-    def broadcast_message(self, message: dict) -> None:
-        self.send_message(message)
-
-    def buildProtocol(self, addr):
-        """Create a new P2PNode protocol instance"""
-        node = P2PNode(self, self.peers)  # Pass the factory instance to P2PNode
-        return node
+            self.logger.info(f"Peer {peer_id} is not currently connected. Sending to all connected peers.")
+            self.send_message(message)
+        else:
+            self.logger.info(f"Sending message to peer {peer_id}")
+            self.send_message(message, transport)
 
     def add_event_listener(self, event_name, listener):
         """Register an event listener for a specific event"""
