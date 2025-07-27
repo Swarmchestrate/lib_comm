@@ -253,6 +253,52 @@ def test_custom_message_exchange_1(agent_factory):
     assert received['payload'] == test_payload, "Message payload should match"
 
 @pytest_twisted.inlineCallbacks
+def test_custom_message_exchange_with_multiconnection(agent_factory):
+    # Create 2 agents
+    a1, a2 = agent_factory(2)
+    received_messages = {
+        a1.peer_id: [],
+        a2.peer_id: []
+    }
+
+    # Register message event handlers for both agents
+    def create_message_event_handler(agent_id):
+        def on_message(data):
+            received_messages[agent_id].append(data)
+        return on_message
+
+    for agent in [a1, a2]:
+        agent.on('message', create_message_event_handler(agent.peer_id))
+
+    # Create bidirectional connections - each agent connects to the other
+    a1.connect(a2.public_ip, a2.public_port)
+    a2.connect(a1.public_ip, a1.public_port)
+    
+    # Wait for connections to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify both agents have connections (may be 1 or 2 depending on implementation)
+    assert a1.get_connection_count() >= 1, "a1 should have at least one connection"
+    assert a2.get_connection_count() >= 1, "a2 should have at least one connection"
+
+    # Send a message from a1 to a2
+    test_payload = {"content": "Hello with multiple connections!"}
+    a1.send(a2.peer_id, "multi_connection_test", test_payload)
+
+    # Wait for message to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify a2 received the message exactly once despite potential multiple connections
+    assert len(received_messages[a1.peer_id]) == 0, "a1 should not receive any messages"
+    assert len(received_messages[a2.peer_id]) == 1, "a2 should receive exactly one message"
+
+    # Verify message contents
+    received = received_messages[a2.peer_id][0]
+    assert received['peer_id'] == a1.peer_id, "Message should be from a1"
+    assert received['message_type'] == "multi_connection_test", "Message type should match"
+    assert received['payload'] == test_payload, "Message payload should match"
+
+@pytest_twisted.inlineCallbacks
 def test_indirect_message_exchange(agent_factory):
     # Create 3 agents in a linear topology: a1 <-> a2 <-> a3
     a1, a2, a3 = agent_factory(3)

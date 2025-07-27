@@ -24,17 +24,17 @@ class Peers:
                 public_info.append(peer_info["public"])
         return public_info
 
-    def get_all_transports(self):
+    def get_peer_transports(self):
         """
-        Return a list of all transport objects from the peers dictionary.
-        We return a list to avoid giving direct access to the dictionary's
-        live values object, thus preventing accidental modifications.
+        Gather and return a list of transport objects from each peer in the peers dictionary.
+        Returns a list rather than the live .values() view to prevent accidental modifications.
         """
         transports = []
         for peer_info in self.peers.values():
             for location in ["remote", "local"]:
                 if peer_info[location] and "transport" in peer_info[location]:
                     transports.append(peer_info[location]["transport"])
+                    break
         return transports
 
     def get_all_peers_values(self):

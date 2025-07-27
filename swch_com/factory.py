@@ -80,7 +80,7 @@ class P2PFactory(Factory):
         if peer_transport:
             peer_transport.write(data)
         else:
-            for transport in self.peers.get_all_transports():
+            for transport in self.peers.get_peer_transports():
                 transport.write(data)
 
     def send_to_peer(self, peer_id: str, message: dict) -> None:
