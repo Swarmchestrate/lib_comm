@@ -1,9 +1,11 @@
 import logging
 import json
 import uuid
+import time
 from typing import Optional, Dict, Any, List
 
 from twisted.internet.protocol import Factory
+from twisted.internet.task import LoopingCall
 
 from swch_com.node import P2PNode
 from swch_com.peers import Peers
@@ -12,7 +14,8 @@ class P2PFactory(Factory):
     def __init__(self, peer_id: str, peer_type: str, universe: str, public_ip: str, public_port: str):
         self.peers = Peers()
 
-        self.seen_messages = set()  # Keep track of processed message IDs
+        self.seen_messages = {}  # Dictionary to store message_id -> timestamp
+        self.message_ttl = 20  # Time to live for messages in seconds
         self.id = peer_id  # Unique ID for this node
         self.universe = universe
         self.type = peer_type
@@ -37,6 +40,32 @@ class P2PFactory(Factory):
 
         self._connection_count = 0  # Private connection counter
 
+        # Start cleanup task for old messages
+        self.cleanup_task = LoopingCall(self._cleanup_old_messages)
+        self.cleanup_task.start(5)  # Run cleanup every 5 seconds
+
+    def _cleanup_old_messages(self):
+        """Remove messages older than message_ttl seconds"""
+        current_time = time.time()
+        expired_messages = [
+            msg_id for msg_id, timestamp in self.seen_messages.items()
+            if current_time - timestamp > self.message_ttl
+        ]
+        
+        for msg_id in expired_messages:
+            del self.seen_messages[msg_id]
+        
+        if expired_messages:
+            self.logger.debug(f"Cleaned up {len(expired_messages)} expired messages")
+
+    def _is_message_seen(self, message_id: str) -> bool:
+        """Check if a message has been seen before"""
+        return message_id in self.seen_messages
+
+    def _mark_message_seen(self, message_id: str):
+        """Mark a message as seen with current timestamp"""
+        self.seen_messages[message_id] = time.time()
+
     def buildProtocol(self, addr):
         """Create a new P2PNode protocol instance"""
         node = P2PNode(self, self.peers)  # Pass the factory instance to P2PNode
@@ -59,12 +88,12 @@ class P2PFactory(Factory):
     def send_message(self, message: dict, peer_transport: Optional[Any] = None) -> None:
         """Send a message to all connected peers or a specific peer."""
         if "message_id" in message:
-            self.seen_messages.add(message["message_id"])
+            self._mark_message_seen(message["message_id"])
         else:
             self.logger.warning("Message without message_id generating id...")
             message_id = str(uuid.uuid4())
             message["message_id"] = message_id
-            self.seen_messages.add(message_id)
+            self._mark_message_seen(message_id)
 
         # Ensure the message has required fields
         if "message_type" not in message:

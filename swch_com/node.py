@@ -60,10 +60,10 @@ class P2PNode(Protocol):
             self.logger.warning("Received message without message_id")
             return
 
-        if message_id in self.factory.seen_messages:
+        if self.factory._is_message_seen(message_id):
             return  # Deduplicate messages
 
-        self.factory.seen_messages.add(message_id)
+        self.factory._mark_message_seen(message_id)
 
         message_type = message.get("message_type")
 

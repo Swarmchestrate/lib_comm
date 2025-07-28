@@ -59,7 +59,7 @@ class SwchAgent():
             'message_type': message_type,
             'payload': payload,
             'target_id': peer_id  # Add explicit target
-        }
+                    }
         self.factory.send_to_peer(peer_id, message)
 
     def broadcast(self, message_type: str, payload: dict):
@@ -72,7 +72,7 @@ class SwchAgent():
             'message_type': message_type,
             'payload': payload,
             'target_id': '*'  # Explicit broadcast marker
-        }
+                    }
         self.factory.send_message(message)
 
     def get_connection_count(self) -> int:

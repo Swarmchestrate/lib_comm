@@ -592,3 +592,57 @@ def test_rejoin_behaviour(agent_factory):
 
     # Verify a3 recieved the message
     assert len(received_messages[a3.peer_id]) == 2, "a3 should receive exactly two messages"
+
+@pytest_twisted.inlineCallbacks
+def test_expired_messages_cleanup(agent_factory):
+    # Create a single agent
+    agent = agent_factory(1)[0]
+    
+    # Modify the factory's message TTL and cleanup interval for faster testing
+    original_ttl = agent.factory.message_ttl
+    original_cleanup_interval = agent.factory.cleanup_task.clock.seconds()
+    
+    # Set short TTL and cleanup interval for testing
+    agent.factory.message_ttl = 1  # 1 second TTL
+    agent.factory.cleanup_task.stop()  # Stop the original cleanup task
+    
+    # Start a new cleanup task with shorter interval
+    from twisted.internet.task import LoopingCall
+    agent.factory.cleanup_task = LoopingCall(agent.factory._cleanup_old_messages)
+    agent.factory.cleanup_task.start(0.5)  # Run cleanup every 0.5 seconds
+    
+    # Generate some test messages to populate seen_messages
+    test_message_ids = [str(uuid.uuid4()) for _ in range(3)]
+    
+    # Mark messages as seen
+    for msg_id in test_message_ids:
+        agent.factory._mark_message_seen(msg_id)
+    
+    # Verify messages are in seen_messages
+    assert len(agent.factory.seen_messages) == 3, "All test messages should be in seen_messages"
+    for msg_id in test_message_ids:
+        assert msg_id in agent.factory.seen_messages, f"Message {msg_id} should be in seen_messages"
+    
+    # Wait for messages to expire (TTL + some buffer)
+    yield deferLater(reactor, 1.5, lambda: None)
+    
+    # Wait for cleanup task to run at least once
+    yield deferLater(reactor, 0.6, lambda: None)
+    
+    # Verify expired messages have been cleaned up
+    assert len(agent.factory.seen_messages) == 0, "Expired messages should be cleaned up"
+    for msg_id in test_message_ids:
+        assert msg_id not in agent.factory.seen_messages, f"Expired message {msg_id} should be removed"
+    
+    # Test that new messages are still tracked
+    new_message_id = str(uuid.uuid4())
+    agent.factory._mark_message_seen(new_message_id)
+    
+    assert new_message_id in agent.factory.seen_messages, "New message should be tracked"
+    assert len(agent.factory.seen_messages) == 1, "Only the new message should be present"
+    
+    # Clean up - restore original settings
+    agent.factory.cleanup_task.stop()
+    agent.factory.message_ttl = original_ttl
+    agent.factory.cleanup_task = LoopingCall(agent.factory._cleanup_old_messages)
+    agent.factory.cleanup_task.start(5)  # Restore original 5-second interval
