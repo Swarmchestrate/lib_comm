@@ -35,10 +35,12 @@ class P2PFactory(Factory):
             'peer:connected': [],
             'peer:disconnected': [],
             'peer:discovered': [],
+            'peer:all_disconnected': [],
             'message': []
         }
 
         self._connection_count = 0  # Private connection counter
+        self._is_shutting_down = False  # Track intentional shutdown
 
         # Start cleanup task for old messages
         self.cleanup_task = LoopingCall(self._cleanup_old_messages)
@@ -152,6 +154,10 @@ class P2PFactory(Factory):
         if event_name in self.event_listeners:
             self.event_listeners[event_name].remove(listener)
 
+    def set_shutting_down(self, shutting_down: bool):
+        """Set the shutdown state to distinguish intentional vs unintentional disconnections"""
+        self._is_shutting_down = shutting_down
+
     def on_peer_connected(self):
         """Trigger the peer:connected event"""
         self._increment_connection_count()
@@ -161,6 +167,13 @@ class P2PFactory(Factory):
     def on_peer_disconnected(self):
         """Trigger the peer:disconnected event"""
         self._decrement_connection_count()
+        
+        # Check if this was the last connection and it wasn't intentional
+        if self._connection_count == 0 and not self._is_shutting_down:
+            self.logger.info("All connections lost unintentionally - triggering peer:all_disconnected event")
+            for listener in self.event_listeners.get('peer:all_disconnected', []):
+                listener()
+        
         for listener in self.event_listeners.get('peer:disconnected', []):
             listener()
 

@@ -3,8 +3,9 @@ import uuid
 import socket
 import json
 
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
+from twisted.internet.task import deferLater
 
 from swch_com.factory import P2PFactory
 from swch_com.node import P2PNode
@@ -37,7 +38,121 @@ class SwchAgent():
         self.public_port = public_port
         self.factory = P2PFactory(peer_id, peer_type, universe, public_ip, public_port)
         
+        # Rejoin mechanism settings
+        self._rejoin_enabled = True
+        self._rejoin_in_progress = False
+        self._max_rejoin_attempts = 10
+        self._rejoin_base_delay = 1  # Base delay in seconds
+        
+        # Set up rejoin mechanism
+        self._setup_rejoin_mechanism()
+        
         self._start_server(self.factory, listen_ip, listen_port)
+
+    def _setup_rejoin_mechanism(self):
+        """Set up the automatic rejoin mechanism"""
+        def on_all_disconnected():
+            if self._rejoin_enabled and not self._rejoin_in_progress:
+                self.logger.info("All peers disconnected - starting rejoin process")
+                reactor.callLater(0, self._attempt_rejoin)
+        
+        self.factory.add_event_listener('peer:all_disconnected', on_all_disconnected)
+
+    def _attempt_rejoin(self):
+        """Attempt to rejoin the network by connecting to known peers"""
+        if self._rejoin_in_progress:
+            return
+        
+        self._rejoin_in_progress = True
+        self.logger.info("Starting rejoin attempts...")
+        
+        # Get all known peers with public information (excluding ourselves)
+        known_peers = []
+        for peer_id, peer_info in self.factory.peers.get_all_peers_items():
+            if peer_id != self.factory.id and peer_info.get('public'):
+                public_info = peer_info['public']
+                known_peers.append((peer_id, public_info['host'], public_info['port']))
+        
+        if not known_peers:
+            self.logger.warning("No known peers to reconnect to")
+            self._rejoin_in_progress = False
+            return
+        
+        self.logger.info(f"Found {len(known_peers)} known peers to attempt reconnection")
+        
+        # Start the rejoin process
+        d = self._try_rejoin_with_peers(known_peers, 0)
+        d.addBoth(lambda _: setattr(self, '_rejoin_in_progress', False))
+
+    def _try_rejoin_with_peers(self, known_peers, attempt):
+        """Try to rejoin with known peers using exponential backoff"""
+        if attempt >= self._max_rejoin_attempts:
+            self.logger.warning(f"Max rejoin attempts ({self._max_rejoin_attempts}) reached")
+            return defer.succeed(None)
+        
+        if self.get_connection_count() > 0:
+            self.logger.info("Successfully reconnected to network")
+            return defer.succeed(None)
+        
+        # Calculate delay with exponential backoff
+        delay = self._rejoin_base_delay * (2 ** min(attempt, 5))  # Cap at 32 seconds
+        
+        self.logger.info(f"Rejoin attempt {attempt + 1}/{self._max_rejoin_attempts} after {delay}s delay")
+        
+        # Try connecting to each known peer
+        connection_attempts = []
+        for peer_id, host, port in known_peers:
+            self.logger.debug(f"Attempting to connect to {peer_id} at {host}:{port}")
+            d = self._attempt_single_connection(host, port)
+            connection_attempts.append(d)
+        
+        # Wait for all connection attempts to complete (or fail)
+        d = defer.DeferredList(connection_attempts, consumeErrors=True)
+        
+        # After all attempts, wait for the delay and try again if still not connected
+        def check_and_continue(_):
+            return deferLater(reactor, delay, lambda: None).addCallback(
+                lambda _: self._try_rejoin_with_peers(known_peers, attempt + 1)
+            )
+        
+        d.addCallback(check_and_continue)
+        return d
+
+    def _attempt_single_connection(self, ip, port):
+        """Attempt a single connection with proper error handling"""
+        endpoint = TCP4ClientEndpoint(reactor, ip, port)
+        protocol = P2PNode(self.factory, self.factory.peers, is_initiator=True)
+        d = connectProtocol(endpoint, protocol)
+        
+        def on_connect(p):
+            self.logger.info(f"Successfully reconnected to peer at {ip}:{port}")
+            return p
+        
+        def on_error(failure):
+            self.logger.debug(f"Failed to connect to {ip}:{port}: {failure.getErrorMessage()}")
+            return failure
+        
+        d.addCallback(on_connect)
+        d.addErrback(on_error)
+        return d
+
+    def enable_rejoin(self):
+        """Enable the automatic rejoin mechanism"""
+        self._rejoin_enabled = True
+        self.logger.info("Rejoin mechanism enabled")
+
+    def disable_rejoin(self):
+        """Disable the automatic rejoin mechanism"""
+        self._rejoin_enabled = False
+        self.logger.info("Rejoin mechanism disabled")
+
+    def is_rejoin_enabled(self):
+        """Check if rejoin mechanism is enabled"""
+        return self._rejoin_enabled
+
+    def is_rejoin_in_progress(self):
+        """Check if rejoin is currently in progress"""
+        return self._rejoin_in_progress
 
     def register_message_handler(self, message_type, func ):
         """Register a custom message handler for a specific message type.
@@ -160,20 +275,59 @@ class SwchAgent():
     def shutdown(self):
         """Shuts down the P2P library, closing all connections and releasing resources.
         This method will:
-        1. Disconnect from all connected peers
-        2. Stop the reactor gracefully
-        :return: None
+        1. Disable rejoin mechanism to prevent reconnection during shutdown
+        2. Mark the agent as shutting down to prevent triggering unintentional disconnect events
+        3. Disconnect from all connected peers and wait for disconnections to complete
+        4. Clear peer information and reset shutdown state for potential reuse
+        :return: A Deferred that fires when shutdown is complete
         """
         self.logger.info("Shutting down SwchAgent...")
         
-        # Disconnect from all connected peers
+        # Disable rejoin mechanism during shutdown
+        self.disable_rejoin()
+        
+        # Mark as shutting down to prevent triggering all_disconnected event
+        self.factory.set_shutting_down(True)
+        
+        # Get list of connected peers before starting disconnections
         connected_peers = self.getConnectedPeers()
+        
+        if not connected_peers:
+            # No connections to close, complete shutdown immediately
+            self._complete_shutdown()
+            return defer.succeed(None)
+        
+        # Create a deferred that will fire when all disconnections are complete
+        shutdown_deferred = defer.Deferred()
+        remaining_disconnections = [len(connected_peers)]  # Use list for mutable reference
+        
+        def on_disconnection_complete():
+            remaining_disconnections[0] -= 1
+            self.logger.debug(f"Disconnection complete. Remaining: {remaining_disconnections[0]}")
+            if remaining_disconnections[0] == 0:
+                self._complete_shutdown()
+                shutdown_deferred.callback(None)
+        
+        # Register temporary listener for disconnections during shutdown
+        self.factory.add_event_listener('peer:disconnected', on_disconnection_complete)
+        
+        # Disconnect from all connected peers
         for peer_id in connected_peers:
             self.disconnect(peer_id)
         
+        return shutdown_deferred
+    
+    def _complete_shutdown(self):
+        """Complete the shutdown process by clearing peers and resetting state"""
         # Clear peer information
         self.factory.peers.clear_peers()
-
+        
+        # Reset shutdown state for potential reuse
+        self.factory.set_shutting_down(False)
+        
+        # Re-enable rejoin mechanism for potential reuse
+        self.enable_rejoin()
+        
         self.logger.info("SwchAgent shutdown complete")
 
     def run(self):
