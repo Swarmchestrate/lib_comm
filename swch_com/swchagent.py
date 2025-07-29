@@ -2,6 +2,7 @@ import logging
 import uuid
 import socket
 import json
+from typing import Optional, Dict, Any, List, Callable
 
 from twisted.internet import reactor, defer
 from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
@@ -11,15 +12,26 @@ from swch_com.factory import P2PFactory
 from swch_com.node import P2PNode
 
 class SwchAgent():
-    def __init__(self, peer_id, listen_ip, listen_port, public_ip=None, public_port=None, metadata=None):
-        """
-        Initialize the SwchAgent with peer ID, network settings, and optional metadata.
-        :param peer_id: Unique identifier for the peer.
-        :param listen_ip: The IP address to listen on for incoming connections.
-        :param listen_port: The port to listen on for incoming connections.
-        :param public_ip: The advertised IP address of the peer (if different from listen_ip).
-        :param public_port: The advertised port of the peer (if different from listen_port).
-        :param metadata: Optional dictionary containing peer metadata (e.g., universe, peer_type, etc.).
+    def __init__(
+        self, 
+        peer_id: Optional[str], 
+        listen_ip: str, 
+        listen_port: int, 
+        public_ip: Optional[str] = None, 
+        public_port: Optional[int] = None, 
+        metadata: Optional[Dict[str, Any]] = None, 
+        enable_rejoin: bool = True
+    ) -> None:
+        """Initialize the SwchAgent with peer ID, network settings, and optional metadata.
+
+        Args:
+            peer_id: Unique identifier for the peer. If None, a UUID will be generated.
+            listen_ip: The IP address to listen on for incoming connections.
+            listen_port: The port to listen on for incoming connections.
+            public_ip: The advertised IP address of the peer. Defaults to listen_ip if not provided.
+            public_port: The advertised port of the peer. Defaults to listen_port if not provided.
+            metadata: Optional dictionary containing peer metadata (e.g., universe, peer_type, etc.).
+            enable_rejoin: Whether to enable automatic rejoin mechanism when all peers disconnect.
         """
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
@@ -40,7 +52,7 @@ class SwchAgent():
         self.factory = P2PFactory(peer_id, metadata, public_ip, public_port)
         
         # Rejoin mechanism settings
-        self._rejoin_enabled = True
+        self._rejoin_enabled = enable_rejoin
         self._rejoin_in_progress = False
         self._max_rejoin_attempts = 10
         self._rejoin_base_delay = 1  # Base delay in seconds
@@ -179,7 +191,7 @@ class SwchAgent():
         """Check if rejoin is currently in progress"""
         return self._rejoin_in_progress
 
-    def register_message_handler(self, message_type, func ):
+    def register_message_handler(self, message_type: str, func: Callable[[str, Dict[str, Any]], None]) -> None:
         """Register a custom message handler for a specific message type.
         :param message_type: The type of message to handle.
         :param func: The function to call when a message of this type is received.
@@ -188,7 +200,7 @@ class SwchAgent():
         """
         self.factory.user_defined_msg_handlers[message_type] = func
 
-    def send(self, peer_id: str, message_type: str, payload: dict):
+    def send(self, peer_id: str, message_type: str, payload: Dict[str, Any]) -> None:
         """Send a message to a specific peer with a message type and payload.
         :param peer_id: The ID of the peer to send the message to.
         :param message_type: The type of the message being sent.
@@ -202,7 +214,7 @@ class SwchAgent():
                     }
         self.factory.send_to_peer(peer_id, message)
 
-    def broadcast(self, message_type: str, payload: dict):
+    def broadcast(self, message_type: str, payload: Dict[str, Any]) -> None:
         """Broadcast a message to all connected peers with a message type and payload.
         :param message_type: The type of the message being broadcast.
         :param payload: The payload of the message, which can be any serializable dictionary.
@@ -228,7 +240,7 @@ class SwchAgent():
 
         logging.info(f"Peer listening for connections on {ip}:{port}...")
 
-    def on(self, event_name: str, listener):
+    def on(self, event_name: str, listener: Callable) -> 'SwchAgent':
         """Register an event listener directly with the factory
         for a specific event.
         :param event_name: The name of the event to listen for.
@@ -238,7 +250,7 @@ class SwchAgent():
         self.factory.add_event_listener(event_name, listener)
         return self
 
-    def getConnectedPeers(self):
+    def getConnectedPeers(self) -> List[str]:
         """Returns a list of currently connected peers.
         This method checks both local and remote connections for each peer
         and returns a list of peer IDs that have an active transport.
@@ -255,7 +267,7 @@ class SwchAgent():
                 connected_peers.append(peer_id)
         return connected_peers
 
-    def connect(self, ip, port):
+    def connect(self, ip: str, port: int) -> None:
         """Connect to a specific peer at the given IP and port.
         This method creates a TCP client endpoint and connects to the specified peer.
         It initializes a P2PNode protocol as the client initiator and handles the connection.
@@ -277,7 +289,7 @@ class SwchAgent():
         # Schedule the connection within the reactor
         reactor.callWhenRunning(_connect)
 
-    def disconnect(self, peer_id: str):
+    def disconnect(self, peer_id: str) -> bool:
         """Disconnects from a specific peer.
         This method will close both local and remote connections if they exist.
         :param peer_id: The ID of the peer to disconnect from.
@@ -297,7 +309,7 @@ class SwchAgent():
 
         return True
 
-    def shutdown(self):
+    def shutdown(self) -> defer.Deferred:
         """Shuts down the P2P library, closing all connections and releasing resources.
         This method will:
         1. Disable rejoin mechanism to prevent reconnection during shutdown
