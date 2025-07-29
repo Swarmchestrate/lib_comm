@@ -1,3 +1,5 @@
+from typing import List
+
 class Peers:
     def __init__(self):
         """
@@ -154,6 +156,20 @@ class Peers:
         This will remove all entries in the peers dictionary.
         """
         self.peers.clear()
+
+    def get_known_peers_with_public_info(self, exclude_peer_id: str = None) -> List[tuple]:
+        """
+        Get all known peers that have public information, optionally excluding a specific peer.
+        
+        :param exclude_peer_id: Optional peer ID to exclude from the results
+        :return: List of tuples (peer_id, host, port) for peers with public info
+        """
+        known_peers = [
+            (peer_id, subdict["public"]["host"], subdict["public"]["port"])
+            for peer_id, subdict in self.peers.items()
+            if subdict["public"] and (exclude_peer_id is None or peer_id != exclude_peer_id)
+        ]
+        return known_peers
 
     def __str__(self):
         """

@@ -142,11 +142,7 @@ class P2PNode(Protocol):
     def broadcast_peer_list(self):
         """Broadcast the known peer list to all connected peers."""
         message_id = str(uuid.uuid4())
-        peer_list = [
-            (peer_id, subdict["public"])
-            for peer_id, subdict in self.peers.get_all_peers_items()
-            if subdict["public"]
-        ]
+        peer_list = self.factory.peers.get_known_peers_with_public_info()
         message = {
             "message_type": "broadcast_peer_list_add",
             "message_id": message_id,
@@ -157,11 +153,7 @@ class P2PNode(Protocol):
 
     def send_peer_list(self, transport):
         message_id = str(uuid.uuid4())
-        peer_list = [
-            (peer_id, subdict["public"])
-            for peer_id, subdict in self.peers.get_all_peers_items()
-            if subdict["public"]
-        ]
+        peer_list = self.factory.peers.get_known_peers_with_public_info()
         message = {
             "message_type": "peer_list_add",
             "message_id": message_id,
@@ -198,13 +190,13 @@ class P2PNode(Protocol):
         peers = message.get("peers", [])
         changed = False
 
-        for peer_id, public in peers:
+        for peer_id, public_host, public_port in peers:
             peer_info = self.peers.get_peer_info(peer_id)
 
             # If we have no info yet, or we have info but no public data
             if not peer_info or not peer_info.get("public"):
                 self.logger.info("Received new peer public info")
-                self.peers.set_public_info(peer_id, public["host"], public["port"])
+                self.peers.set_public_info(peer_id, public_host, public_port)
                 changed = True
 
         if changed:

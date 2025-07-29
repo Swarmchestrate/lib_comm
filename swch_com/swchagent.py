@@ -67,11 +67,7 @@ class SwchAgent():
         self.logger.info("Starting rejoin attempts...")
         
         # Get all known peers with public information (excluding ourselves)
-        known_peers = []
-        for peer_id, peer_info in self.factory.peers.get_all_peers_items():
-            if peer_id != self.factory.id and peer_info.get('public'):
-                public_info = peer_info['public']
-                known_peers.append((peer_id, public_info['host'], public_info['port']))
+        known_peers = self.factory.peers.get_known_peers_with_public_info(exclude_peer_id=self.factory.id)
         
         if not known_peers:
             self.logger.warning("No known peers to reconnect to")
