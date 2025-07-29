@@ -64,7 +64,7 @@ class Peers:
             items = []
             for peer_id, peer_info in self.peers.items():
                 peer_copy = {}
-                for location in ["local", "remote", "public"]:
+                for location in ["local", "remote", "public", "metadata"]:
                     if location in peer_info:
                         if location in ["local", "remote"] and peer_info[location] and "transport" in peer_info[location]:
                             # Shallow copy for transport-containing dicts to preserve transport references
@@ -85,7 +85,8 @@ class Peers:
                 self.peers[peer_id] = {
                     "local": {},
                     "remote": {},
-                    "public": {}
+                    "public": {},
+                    "metadata": {},
                 }
 
     def set_local_info(self, peer_id: str, host: str, port: str, transport) -> None:
@@ -132,11 +133,34 @@ class Peers:
         :param port: The public port.
         """
         with self._lock:
-            self.add_peer(peer_id)
             self.peers[peer_id]["public"] = {
                 "host": host,
                 "port": port
             }
+
+    def set_peer_metadata(self, peer_id: str, metadata: dict) -> bool:
+        """
+        Set the metadata for a given peer.
+
+        :param peer_id: Identifier for the peer.
+        :param metadata: Dictionary containing peer metadata.
+        :return: True if metadata was set successfully, False if peer doesn't exist.
+        """
+        with self._lock:
+            if peer_id not in self.peers:
+                return False
+            self.peers[peer_id]["metadata"] = metadata or {}
+            return True
+
+    def get_peer_metadata(self, peer_id: str) -> dict:
+        """
+        Retrieve the metadata for a specific peer.
+
+        :param peer_id: The ID of the peer.
+        :return: The metadata dictionary if present, otherwise an empty dictionary.
+        """
+        with self._lock:
+            return copy.deepcopy(self.peers.get(peer_id, {}).get("metadata", {}))
 
     def get_peer_info(self, peer_id: str) -> dict:
         """
@@ -150,7 +174,7 @@ class Peers:
             if peer_info:
                 # Create a safe copy that preserves transport references
                 peer_copy = {}
-                for location in ["local", "remote", "public"]:
+                for location in ["local", "remote", "public", "metadata"]:
                     if location in peer_info:
                         if location in ["local", "remote"] and peer_info[location] and "transport" in peer_info[location]:
                             # Shallow copy for transport-containing dicts
@@ -195,16 +219,32 @@ class Peers:
         with self._lock:
             self.peers.clear()
 
-    def get_known_peers_with_public_info(self, exclude_peer_id: str = None) -> List[tuple]:
+    def get_known_peers_metadata(self, exclude_peer_id: str = None) -> List[tuple]:
+        """
+        Get all known peers that have metadata, optionally excluding a specific peer.
+        
+        :param
+        exclude_peer_id: Optional peer ID to exclude from the results
+        :return: List of tuples (peer_id, metadata) for peers with metadata.
+        """
+        with self._lock:
+            known_peers = [
+                (peer_id, subdict["metadata"])
+                for peer_id, subdict in self.peers.items()
+                if subdict["metadata"] and (exclude_peer_id is None or peer_id != exclude_peer_id)
+            ]
+            return known_peers
+
+    def get_known_peers_public_info(self, exclude_peer_id: str = None) -> List[tuple]:
         """
         Get all known peers that have public information, optionally excluding a specific peer.
         
         :param exclude_peer_id: Optional peer ID to exclude from the results
-        :return: List of tuples (peer_id, host, port) for peers with public info
+        :return: List of tuples (peer_id, public_info, metadata) for peers with public info and metadata.
         """
         with self._lock:
             known_peers = [
-                (peer_id, subdict["public"]["host"], subdict["public"]["port"])
+                (peer_id, subdict["public"], subdict["metadata"])
                 for peer_id, subdict in self.peers.items()
                 if subdict["public"] and (exclude_peer_id is None or peer_id != exclude_peer_id)
             ]

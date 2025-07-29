@@ -11,20 +11,17 @@ from swch_com.factory import P2PFactory
 from swch_com.node import P2PNode
 
 class SwchAgent():
-    def __init__(self, peer_id, universe, peer_type, listen_ip, listen_port, public_ip=None, public_port=None):
+    def __init__(self, peer_id, listen_ip, listen_port, public_ip=None, public_port=None, metadata=None):
         """
-        Initialize the SwchAgent with peer ID, universe, peer type, and network settings.
+        Initialize the SwchAgent with peer ID, network settings, and optional metadata.
         :param peer_id: Unique identifier for the peer.
-        :param universe: The universe this peer belongs to.
-        :param peer_type: The type of the peer (e.g., 'ra', 'sa').
         :param listen_ip: The IP address to listen on for incoming connections.
         :param listen_port: The port to listen on for incoming connections.
         :param public_ip: The advertised IP address of the peer (if different from listen_ip).
         :param public_port: The advertised port of the peer (if different from listen_port).
+        :param metadata: Optional dictionary containing peer metadata (e.g., universe, peer_type, etc.).
         """
         self.logger = logging.getLogger(__name__)  # Initialize logger
-        self.universe = universe
-        self.peer_type = peer_type
 
         if not peer_id:
             peer_id = str(uuid.uuid4())
@@ -33,10 +30,14 @@ class SwchAgent():
             public_ip = listen_ip
             public_port = listen_port
 
+        if metadata is None:
+            metadata = {}
+
         self.peer_id = peer_id
         self.public_ip = public_ip
         self.public_port = public_port
-        self.factory = P2PFactory(peer_id, peer_type, universe, public_ip, public_port)
+        self.metadata = metadata
+        self.factory = P2PFactory(peer_id, metadata, public_ip, public_port)
         
         # Rejoin mechanism settings
         self._rejoin_enabled = True
@@ -67,7 +68,7 @@ class SwchAgent():
         self.logger.info("Starting rejoin attempts...")
         
         # Get all known peers with public information (excluding ourselves)
-        known_peers = self.factory.peers.get_known_peers_with_public_info(exclude_peer_id=self.factory.id)
+        known_peers = self.factory.peers.get_known_peers_public_info(exclude_peer_id=self.factory.id)
         
         if not known_peers:
             self.logger.warning("No known peers to reconnect to")
@@ -120,7 +121,9 @@ class SwchAgent():
             # Already connected, stop trying
             return defer.succeed(True)
         
-        peer_id, host, port = known_peers[peer_index]
+        peer_id, public_info, metadata = known_peers[peer_index]
+        host = public_info["host"]
+        port = public_info["port"]
         self.logger.debug(f"Attempting to connect to {peer_id} at {host}:{port}")
         
         d = self._attempt_single_connection(host, port)

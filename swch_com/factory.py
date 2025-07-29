@@ -11,23 +11,30 @@ from swch_com.node import P2PNode
 from swch_com.peers import Peers
 
 class P2PFactory(Factory):
-    def __init__(self, peer_id: str, peer_type: str, universe: str, public_ip: str, public_port: str):
+    def __init__(self, peer_id: str, metadata: dict, public_ip: str, public_port: str):
+        """
+        Initialize the P2P factory with peer information and metadata.
+        :param peer_id: Unique identifier for this peer
+        :param metadata: Dictionary containing peer metadata (e.g., universe, peer_type, etc.)
+        :param public_ip: Public IP address of this peer
+        :param public_port: Public port of this peer
+        """
         self.peers = Peers()
 
         self.seen_messages = {}  # Dictionary to store message_id -> timestamp
         self.message_ttl = 20  # Time to live for messages in seconds
         self.id = peer_id  # Unique ID for this node
-        self.universe = universe
-        self.type = peer_type
 
         self.public_ip = public_ip
         self.public_port = public_port
+        self.metadata = metadata
 
         self.peers.add_peer(self.id)
         self.peers.set_public_info(self.id, public_ip, public_port)
+        self.peers.set_peer_metadata(self.id, metadata)
 
         self.logger = logging.getLogger(__name__)  # Initialize logger
-        self.logger.info(f"Initialized P2PFactory with id: {self.id}, type: {self.type}, universe: {self.universe}, host: {public_ip}, port: {public_port}")
+        self.logger.info(f"Initialized P2PFactory with id: {self.id}, metadata: {metadata}, host: {public_ip}, port: {public_port}")
 
         self.user_defined_msg_handlers=dict()
         

@@ -105,21 +105,21 @@ class P2PNode(Protocol):
         """Update peer info upon receiving process_peer_info message."""
  
         peer_id = message.get("peer_id")
-        peer_universe = message.get("peer_universe")
-        peer_type = message.get("peer_type")
 
-        self.logger.info("Received peer_info: {},{},{}".format(peer_id,peer_universe,peer_type))
+        self.logger.info("Received peer_info: %s", str(message))
         if not peer_id:
             self.logger.error("Received process_peer_info without id")
             return
 
         if not self.peers.get_peer_info(peer_id):
-            self.logger.info(f"Adding peer {peer_id}")
+            self.logger.info(f"Adding new peer {peer_id}")
             self.peers.add_peer(peer_id)
+            self.factory.add_peer_discovered_event(peer_id)
+
         elif self.peers.get_peer_info(peer_id)["public"]:
-            self.logger.info(f"Peer {peer_id} found with connection details.")
+            self.logger.info(f"Peer {peer_id} already known with public info.")
         else:
-            self.logger.info(f"Peer {peer_id} found without connection details.")
+            self.logger.info(f"Peer {peer_id} already known but no public info.")
     
         peer = self.transport.getPeer()
 
@@ -129,38 +129,26 @@ class P2PNode(Protocol):
             self.peers.set_remote_info(peer_id, peer.host, peer.port, self.transport)
 
         self.remote_id = peer_id
-        #Update factory peer count
+        
         self.factory.on_peer_connected()
 
-        if self.is_initiator:
-            self.logger.info(f"I ({peer_id}) am initiator. Broadcasting peer list...")
-            self.broadcast_peer_list()
-        else:
-            if peer_type=="ra":
-                self.send_peer_list(self.transport)
+        message = {
+            "message_type": "peer_list_add",
+            "peers": self.factory.peers.get_known_peers_public_info(),
+            }
+        self.factory.send_message(message, self.transport)
 
     def broadcast_peer_list(self):
         """Broadcast the known peer list to all connected peers."""
         message_id = str(uuid.uuid4())
-        peer_list = self.factory.peers.get_known_peers_with_public_info()
+        peer_public_info_list = self.factory.peers.get_known_peers_public_info()
         message = {
             "message_type": "broadcast_peer_list_add",
             "message_id": message_id,
             "peer_id": self.factory.id,
-            "peers": peer_list
+            "peers": peer_public_info_list
         }
         self.factory.send_message(message)
-
-    def send_peer_list(self, transport):
-        message_id = str(uuid.uuid4())
-        peer_list = self.factory.peers.get_known_peers_with_public_info()
-        message = {
-            "message_type": "peer_list_add",
-            "message_id": message_id,
-            "peer_id": self.factory.id,
-            "peers": peer_list
-        }
-        self.factory.send_message(message, transport)
 
     def broadcast_remove_peer(self, peer_id: str):
         """Broadcast a message to all peers to remove a disconnected peer."""
@@ -168,7 +156,6 @@ class P2PNode(Protocol):
         message = {
             "message_type": "broadcast_remove_peer",
             "message_id": message_id,
-            "peer_id": self.factory.id,
             "peer_id": peer_id
         }
         self.factory.send_message(message)
@@ -180,32 +167,41 @@ class P2PNode(Protocol):
             "message_type": "peer_info",
             "message_id": message_id,
             "peer_id": self.factory.id,
-            "peer_universe": self.factory.universe,
-            "peer_type": self.factory.type
         }
         self.factory.send_message(message, peer_transport=self.transport)
 
     def update_peer_list(self, message: Dict[str, Any]):
         """Update the known peer list."""
         peers = message.get("peers", [])
-        changed = False
+        any_changed = False
 
-        for peer_id, public_host, public_port in peers:
-            peer_info = self.peers.get_peer_info(peer_id)
+        for peer_id, public_info, metadata in peers:
+            old = self.peers.get_peer_info(peer_id)
 
-            # If we have no info yet, or we have info but no public data
-            if not peer_info or not peer_info.get("public"):
-                self.logger.info("Received new peer public info")
-                self.peers.set_public_info(peer_id, public_host, public_port)
-                changed = True
+            if not old:
+                self.logger.info(f"Recieved new peer {peer_id} info")
+                self.peers.add_peer(peer_id)
+                self.peers.set_public_info(peer_id, public_info["host"], public_info["port"])
+                self.peers.set_peer_metadata(peer_id, metadata)
 
-        if changed:
-            # Emit peer discovered event
-            self.factory.add_peer_discovered_event(peer_id)
-            #Propagate peer list changes
+                self.factory.add_peer_discovered_event(peer_id)
+                any_changed = True
+
+            if old and (old.get("public") != public_info):
+                self.logger.info(f"Recieved peer {peer_id} new public info")
+                self.peers.set_public_info(peer_id, public_info["host"], public_info["port"])
+                any_changed = True
+
+            if old and (old.get("metadata") != metadata):
+                self.logger.info(f"Recieved peer {peer_id} new metadata")
+                self.peers.set_peer_metadata(peer_id, metadata)
+                any_changed = True
+
+        if any_changed:
+            # propagate the update to your other neighbors
             self.broadcast_peer_list()
-            # Log the updated peer list
             self.log_public_peer_list()
+
 
     def remove_peer(self, message: Dict[str, Any]):
         """Remove a peer from all_peers."""

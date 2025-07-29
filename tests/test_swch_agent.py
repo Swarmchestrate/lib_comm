@@ -14,7 +14,7 @@ def agent_factory():
     host = "127.0.0.1"
     created = []
 
-    def _create(num_agents, *, universe="test_universe", role="ra", prefix="agent"):
+    def _create(num_agents, *, metadata=None, prefix="agent"):
         agents = []
         for i in range(num_agents):
             # pick an ephemeral port
@@ -24,8 +24,7 @@ def agent_factory():
             sock.close()
 
             agent_id = f"{prefix}{i+1}"
-            agent = SwchAgent(agent_id, universe, role,
-                              listen_ip=host, listen_port=port)
+            agent = SwchAgent(agent_id,metadata=metadata,listen_ip=host, listen_port=port)
             agents.append(agent)
             created.append(agent)
         return agents
@@ -34,7 +33,9 @@ def agent_factory():
 
 @pytest_twisted.inlineCallbacks
 def test_two_agents_connection(agent_factory):
-    a1, a2 = agent_factory(2)
+    a1 = agent_factory(1, metadata={"type": "worker", "universe": "test", "version": "1.0"}, prefix=1)[0]
+    a2 = agent_factory(1, metadata={"type": "manager", "universe": "test", "version": "1.1"},prefix=2)[0]
+    
     # 1. Initiate connection from a1 to a2's listening port
     a1.connect(a2.public_ip, a2.public_port)
 
@@ -43,20 +44,37 @@ def test_two_agents_connection(agent_factory):
     # 3. Both agents should have exactly one connection established
     assert a1.get_connection_count() == 1, "a1 did not register the connection"
     assert a2.get_connection_count() == 1, "a2 did not register the connection"
+    
     # 4. Each agent's Peers registry should have an entry for the other
     peer_info_1 = a1.factory.peers.get_peer_info(a2.peer_id)
     peer_info_2 = a2.factory.peers.get_peer_info(a1.peer_id)
     assert peer_info_1, "a1 has no peer info for a2"
     assert peer_info_2, "a2 has no peer info for a1"
+    
     # (Optionally, assert that the stored host/port match the known addresses)
     assert peer_info_1["public"]["port"] == a2.public_port
     assert peer_info_2["public"]["port"] == a1.public_port
+    
+    # 5. Verify metadata propagation
+    assert peer_info_1["metadata"] == a2.factory.metadata, "a1 should have a2's metadata"
+    assert peer_info_2["metadata"] == a1.factory.metadata, "a2 should have a1's metadata"
+    
+    # Verify specific metadata fields
+    assert peer_info_1["metadata"]["type"] == "manager", "a1 should know a2 is a manager"
+    assert peer_info_1["metadata"]["universe"] == "test", "a1 should know a2's universe"
+    assert peer_info_1["metadata"]["version"] == "1.1", "a1 should know a2's version"
+    
+    assert peer_info_2["metadata"]["type"] == "worker", "a2 should know a1 is a worker"
+    assert peer_info_2["metadata"]["universe"] == "test", "a2 should know a1's universe"
+    assert peer_info_2["metadata"]["version"] == "1.0", "a2 should know a1's version"
 
 @pytest_twisted.inlineCallbacks
 def test_three_agents_connection_1(agent_factory):
-    # create 3 agents
-    a1, a2, a3 = agent_factory(3)
-
+    # create 3 agents with different metadata
+    a1 = agent_factory(1, metadata={"type": "worker", "universe": "production", "region": "us-east"}, prefix=1)[0]
+    a2 = agent_factory(1, metadata={"type": "coordinator", "universe": "production", "region": "us-west"}, prefix=2)[0]
+    a3 = agent_factory(1, metadata={"type": "storage", "universe": "production", "region": "eu-central"}, prefix=3)[0]
+    
     # connect a1 → a3 and a2 → a3
     a1.connect(a3.public_ip, a3.public_port)
     a2.connect(a3.public_ip, a3.public_port)
@@ -95,6 +113,36 @@ def test_three_agents_connection_1(agent_factory):
                 f"{agent.peer_id} has wrong public.port for {pid}: "
                 f"expected {peer.public_port}, got {pub.get('port')}"
             )
+            
+            # verify metadata propagation
+            expected_metadata = peer.factory.metadata
+            actual_metadata = info.get("metadata", {})
+            assert actual_metadata == expected_metadata, (
+                f"{agent.peer_id} has wrong metadata for {pid}: "
+                f"expected {expected_metadata}, got {actual_metadata}"
+            )
+
+    # Verify specific metadata values are propagated correctly
+    # Check a1's view of other agents
+    a1_peers = {pid: info for pid, info in a1.factory.peers.get_all_peers_items()}
+    assert a1_peers[a2.peer_id]["metadata"]["type"] == "coordinator", "a1 should know a2 is coordinator"
+    assert a1_peers[a2.peer_id]["metadata"]["region"] == "us-west", "a1 should know a2's region"
+    assert a1_peers[a3.peer_id]["metadata"]["type"] == "storage", "a1 should know a3 is storage"
+    assert a1_peers[a3.peer_id]["metadata"]["region"] == "eu-central", "a1 should know a3's region"
+    
+    # Check a2's view of other agents
+    a2_peers = {pid: info for pid, info in a2.factory.peers.get_all_peers_items()}
+    assert a2_peers[a1.peer_id]["metadata"]["type"] == "worker", "a2 should know a1 is worker"
+    assert a2_peers[a1.peer_id]["metadata"]["region"] == "us-east", "a2 should know a1's region"
+    assert a2_peers[a3.peer_id]["metadata"]["type"] == "storage", "a2 should know a3 is storage"
+    assert a2_peers[a3.peer_id]["metadata"]["region"] == "eu-central", "a2 should know a3's region"
+    
+    # Check a3's view of other agents
+    a3_peers = {pid: info for pid, info in a3.factory.peers.get_all_peers_items()}
+    assert a3_peers[a1.peer_id]["metadata"]["type"] == "worker", "a3 should know a1 is worker"
+    assert a3_peers[a1.peer_id]["metadata"]["region"] == "us-east", "a3 should know a1's region"
+    assert a3_peers[a2.peer_id]["metadata"]["type"] == "coordinator", "a3 should know a2 is coordinator"
+    assert a3_peers[a2.peer_id]["metadata"]["region"] == "us-west", "a3 should know a2's region"
 
     # --- now test shutdown behavior ---
     # a2 drops both a1 and a3
@@ -113,7 +161,7 @@ def test_three_agents_connection_1(agent_factory):
 
     # a2 should have an empty peers dict
     assert not a2.factory.peers.get_all_peers_items(), \
-        f"{a1.peer_id} did not clear its peers after disconnect"
+        f"{a2.peer_id} did not clear its peers after disconnect"
 
 @pytest_twisted.inlineCallbacks
 def test_three_agents_connection_2(agent_factory):

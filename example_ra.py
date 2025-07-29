@@ -61,7 +61,7 @@ if __name__ == "__main__":
         peer_id = str(uuid.uuid4())
 
     
-    com = SwchAgent(peer_id,"swch", "ra", listen_ip, listen_port, public_ip, public_port)
+    com = SwchAgent(peer_id, listen_ip, listen_port, public_ip, public_port)
         
     # If join is provided, connect to the specified peer
     if args.join:
