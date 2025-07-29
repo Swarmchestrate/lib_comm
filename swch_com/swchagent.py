@@ -95,23 +95,49 @@ class SwchAgent():
         
         self.logger.info(f"Rejoin attempt {attempt + 1}/{self._max_rejoin_attempts} after {delay}s delay")
         
-        # Try connecting to each known peer
-        connection_attempts = []
-        for peer_id, host, port in known_peers:
-            self.logger.debug(f"Attempting to connect to {peer_id} at {host}:{port}")
-            d = self._attempt_single_connection(host, port)
-            connection_attempts.append(d)
+        # Try connecting to peers sequentially
+        d = self._try_sequential_connections(known_peers, 0)
         
-        # Wait for all connection attempts to complete (or fail)
-        d = defer.DeferredList(connection_attempts, consumeErrors=True)
-        
-        # After all attempts, wait for the delay and try again if still not connected
-        def check_and_continue(_):
+        def check_and_continue(success):
+            if success or self.get_connection_count() > 0:
+                self.logger.info("Successfully reconnected to network")
+                return defer.succeed(None)
+            # Wait for delay and try again if no connection was established
             return deferLater(reactor, delay, lambda: None).addCallback(
                 lambda _: self._try_rejoin_with_peers(known_peers, attempt + 1)
             )
         
         d.addCallback(check_and_continue)
+        return d
+
+    def _try_sequential_connections(self, known_peers, peer_index):
+        """Try connecting to peers sequentially, one at a time"""
+        if peer_index >= len(known_peers):
+            # Tried all peers, none succeeded
+            return defer.succeed(False)
+        
+        if self.get_connection_count() > 0:
+            # Already connected, stop trying
+            return defer.succeed(True)
+        
+        peer_id, host, port = known_peers[peer_index]
+        self.logger.debug(f"Attempting to connect to {peer_id} at {host}:{port}")
+        
+        d = self._attempt_single_connection(host, port)
+        
+        def on_result(result):
+            # Check if we're now connected (connection might have succeeded)
+            if self.get_connection_count() > 0:
+                return defer.succeed(True)
+            # Try next peer
+            return self._try_sequential_connections(known_peers, peer_index + 1)
+        
+        def on_error(failure):
+            # Connection failed, try next peer
+            return self._try_sequential_connections(known_peers, peer_index + 1)
+        
+        d.addCallback(on_result)
+        d.addErrback(on_error)
         return d
 
     def _attempt_single_connection(self, ip, port):
