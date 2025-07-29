@@ -1,4 +1,6 @@
 from typing import List
+import threading
+import copy
 
 class Peers:
     def __init__(self):
@@ -13,6 +15,7 @@ class Peers:
         This allows for easy access and modification of peer information
         """
         self.peers = {}
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
 
     def get_all_public_info(self):
         """
@@ -20,24 +23,26 @@ class Peers:
         We return a list to avoid giving direct access to the dictionary's
         live values object, thus preventing accidental modifications.
         """
-        public_info = []
-        for peer_info in self.peers.values():
-            if "public" in peer_info and peer_info["public"]:
-                public_info.append(peer_info["public"])
-        return public_info
+        with self._lock:
+            public_info = []
+            for peer_info in self.peers.values():
+                if "public" in peer_info and peer_info["public"]:
+                    public_info.append(copy.deepcopy(peer_info["public"]))
+            return public_info
 
     def get_peer_transports(self):
         """
         Gather and return a list of transport objects from each peer in the peers dictionary.
         Returns a list rather than the live .values() view to prevent accidental modifications.
         """
-        transports = []
-        for peer_info in self.peers.values():
-            for location in ["remote", "local"]:
-                if peer_info[location] and "transport" in peer_info[location]:
-                    transports.append(peer_info[location]["transport"])
-                    break
-        return transports
+        with self._lock:
+            transports = []
+            for peer_info in self.peers.values():
+                for location in ["remote", "local"]:
+                    if peer_info[location] and "transport" in peer_info[location]:
+                        transports.append(peer_info[location]["transport"])
+                        break
+            return transports
 
     def get_all_peers_values(self):
         """
@@ -45,7 +50,8 @@ class Peers:
         We return a list to avoid giving direct access to the dictionary's
         live values object, thus preventing accidental modifications.
         """
-        return list(self.peers.values())
+        with self._lock:
+            return copy.deepcopy(list(self.peers.values()))
 
     def get_all_peers_items(self):
         """
@@ -53,7 +59,20 @@ class Peers:
         We return a list to avoid giving direct access to the dictionary's
         live items view, thus preventing accidental modifications.
         """
-        return list(self.peers.items())
+        with self._lock:
+            # Deep copy everything except transport objects to avoid issues
+            items = []
+            for peer_id, peer_info in self.peers.items():
+                peer_copy = {}
+                for location in ["local", "remote", "public"]:
+                    if location in peer_info:
+                        if location in ["local", "remote"] and peer_info[location] and "transport" in peer_info[location]:
+                            # Shallow copy for transport-containing dicts to preserve transport references
+                            peer_copy[location] = peer_info[location].copy()
+                        else:
+                            peer_copy[location] = copy.deepcopy(peer_info[location])
+                items.append((peer_id, peer_copy))
+            return items
 
     def add_peer(self, peer_id: str) -> None:
         """
@@ -61,12 +80,13 @@ class Peers:
 
         :param peer_id: A unique identifier for the peer (e.g., a string or UUID).
         """
-        if peer_id not in self.peers:
-            self.peers[peer_id] = {
-                "local": {},
-                "remote": {},
-                "public": {}
-            }
+        with self._lock:
+            if peer_id not in self.peers:
+                self.peers[peer_id] = {
+                    "local": {},
+                    "remote": {},
+                    "public": {}
+                }
 
     def set_local_info(self, peer_id: str, host: str, port: str, transport) -> None:
         """
@@ -77,13 +97,14 @@ class Peers:
         :param port: The local port (string).
         :param transport: The transport object.
         """
-        # Ensure the peer exists
-        self.add_peer(peer_id)
-        self.peers[peer_id]["local"] = {
-            "host": host,
-            "port": port,
-            "transport": transport
-        }
+        with self._lock:
+            # Ensure the peer exists
+            self.add_peer(peer_id)
+            self.peers[peer_id]["local"] = {
+                "host": host,
+                "port": port,
+                "transport": transport
+            }
 
     def set_remote_info(self, peer_id: str, host: str, port: str, transport) -> None:
         """
@@ -94,12 +115,13 @@ class Peers:
         :param port: The remote port.
         :param transport: The transport object.
         """
-        self.add_peer(peer_id)
-        self.peers[peer_id]["remote"] = {
-            "host": host,
-            "port": port,
-            "transport": transport
-        }
+        with self._lock:
+            self.add_peer(peer_id)
+            self.peers[peer_id]["remote"] = {
+                "host": host,
+                "port": port,
+                "transport": transport
+            }
 
     def set_public_info(self, peer_id: str, host: str, port: str) -> None:
         """
@@ -109,11 +131,12 @@ class Peers:
         :param host: The public host address.
         :param port: The public port.
         """
-        self.add_peer(peer_id)
-        self.peers[peer_id]["public"] = {
-            "host": host,
-            "port": port
-        }
+        with self._lock:
+            self.add_peer(peer_id)
+            self.peers[peer_id]["public"] = {
+                "host": host,
+                "port": port
+            }
 
     def get_peer_info(self, peer_id: str) -> dict:
         """
@@ -122,7 +145,20 @@ class Peers:
         :param peer_id: The ID of the peer.
         :return: The peer's dictionary if present, otherwise an empty dictionary.
         """
-        return self.peers.get(peer_id, {})
+        with self._lock:
+            peer_info = self.peers.get(peer_id, {})
+            if peer_info:
+                # Create a safe copy that preserves transport references
+                peer_copy = {}
+                for location in ["local", "remote", "public"]:
+                    if location in peer_info:
+                        if location in ["local", "remote"] and peer_info[location] and "transport" in peer_info[location]:
+                            # Shallow copy for transport-containing dicts
+                            peer_copy[location] = peer_info[location].copy()
+                        else:
+                            peer_copy[location] = copy.deepcopy(peer_info[location])
+                return peer_copy
+            return {}
 
     def remove_peer_info(self, peer_id: str, info_type: str = None) -> bool:
         """
@@ -135,27 +171,29 @@ class Peers:
                          (e.g., "local", "remote", "public").
         :return: True if removal was successful, False otherwise.
         """
-        if peer_id not in self.peers:
-            return False  # Peer doesn't exist
+        with self._lock:
+            if peer_id not in self.peers:
+                return False  # Peer doesn't exist
 
-        if info_type is None:
-            # Remove the entire peer
-            del self.peers[peer_id]
-            return True
-        else:
-            # Remove only the specified sub-section if it exists
-            if info_type in self.peers[peer_id]:
-                self.peers[peer_id][info_type] = {}
+            if info_type is None:
+                # Remove the entire peer
+                del self.peers[peer_id]
                 return True
             else:
-                return False
+                # Remove only the specified sub-section if it exists
+                if info_type in self.peers[peer_id]:
+                    self.peers[peer_id][info_type] = {}
+                    return True
+                else:
+                    return False
     
     def clear_peers(self) -> None:
         """
         Clear all peer information from the data structure.
         This will remove all entries in the peers dictionary.
         """
-        self.peers.clear()
+        with self._lock:
+            self.peers.clear()
 
     def get_known_peers_with_public_info(self, exclude_peer_id: str = None) -> List[tuple]:
         """
@@ -164,15 +202,17 @@ class Peers:
         :param exclude_peer_id: Optional peer ID to exclude from the results
         :return: List of tuples (peer_id, host, port) for peers with public info
         """
-        known_peers = [
-            (peer_id, subdict["public"]["host"], subdict["public"]["port"])
-            for peer_id, subdict in self.peers.items()
-            if subdict["public"] and (exclude_peer_id is None or peer_id != exclude_peer_id)
-        ]
-        return known_peers
+        with self._lock:
+            known_peers = [
+                (peer_id, subdict["public"]["host"], subdict["public"]["port"])
+                for peer_id, subdict in self.peers.items()
+                if subdict["public"] and (exclude_peer_id is None or peer_id != exclude_peer_id)
+            ]
+            return known_peers
 
     def __str__(self):
         """
         Optional: String representation of the entire peer structure for debugging.
         """
-        return str(self.peers)
+        with self._lock:
+            return str(copy.deepcopy(self.peers))
