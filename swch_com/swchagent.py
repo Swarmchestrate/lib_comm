@@ -378,3 +378,43 @@ class SwchAgent():
         self.logger.info("Stopping Twisted reactor...")
         reactor.stop()
         self.logger.info("Twisted reactor stopped")
+
+    def findPeers(self, metadata=None):
+        """
+        Searches for peers based on metadata criteria. 
+        
+        Args:
+            metadata (dict, optional): Custom metadata to match
+        
+        Returns:
+            list: List of matching peer IDs excluding self
+        """
+        if metadata is None:
+            metadata = {}
+        
+        all_peers = self.factory.peers.get_all_peers_items()
+        matching_peer_ids = []
+        
+        for peer_id, peer_info in all_peers:
+            # Skip self
+            if peer_id == self.peer_id:
+                continue
+                
+            # Check metadata criteria
+            if metadata:
+                peer_metadata = peer_info.get('metadata', {})
+                
+                # Check if all search metadata fields match
+                match = True
+                for key, value in metadata.items():
+                    if key not in peer_metadata or peer_metadata[key] != value:
+                        match = False
+                        break
+                
+                if match:
+                    matching_peer_ids.append(peer_id)
+            else:
+                # No metadata criteria, return all peers
+                matching_peer_ids.append(peer_id)
+        
+        return matching_peer_ids

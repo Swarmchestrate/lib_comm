@@ -898,3 +898,40 @@ def test_rejoin_with_network_partition_healing(agent_factory):
     assert healed_message['peer_id'] == a1.peer_id, "Message should be from a1"
     assert healed_message['message_type'] == "healed_network", "Message type should match"
 
+@pytest_twisted.inlineCallbacks
+def test_find_peers_by_metadata(agent_factory):
+    # Create agents with various metadata
+    agents_metadata = [
+        {"type": "worker", "region": "us-east", "version": "1.0"},
+        {"type": "worker", "region": "us-west", "version": "1.0"},
+        {"type": "manager", "region": "us-east", "version": "1.1"},
+        {"type": "storage", "region": "eu-central", "version": "1.0"},
+        {"type": "worker", "region": "us-east", "version": "1.1"}
+    ]
+    
+    agents = []
+    for i, metadata in enumerate(agents_metadata):
+        agent = agent_factory(1, metadata=metadata, prefix=f"agent{i}")[0]
+        agents.append(agent)
+    
+    # Connect all agents to the first one (star topology)
+    for i in range(1, len(agents)):
+        agents[i].connect(agents[0].public_ip, agents[0].public_port)
+    
+    yield deferLater(reactor, 1, lambda: None)
+    
+    # Test finding by single metadata field
+    results = agents[0].findPeers({"type": "worker"})
+    assert len(results) == 2, "Should find 2 workers"
+    
+    # Test finding by multiple metadata fields
+    results = agents[1].findPeers({"type": "worker", "region": "us-east"})
+    assert len(results) == 2, "Should find 2 workers in us-east"
+    
+    # Test finding by exact metadata match
+    results = agents[2].findPeers({"type": "worker", "region": "us-east", "version": "1.0"})
+    assert len(results) == 1, "Should find exactly 1 worker in us-east with version 1.0"
+    
+    # Test finding non-matching metadata
+    results = agents[0].findPeers({"type": "nonexistent"})
+    assert len(results) == 0, "Should find no peers with non-existent type"
