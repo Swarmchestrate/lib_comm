@@ -267,27 +267,123 @@ class SwchAgent():
                 connected_peers.append(peer_id)
         return connected_peers
 
-    def connect(self, ip: str, port: int) -> None:
-        """Connect to a specific peer at the given IP and port.
+    def _connect(self, ip: str, port: int) -> defer.Deferred:
+        """Connect to a specific peer at the given IP and port with proper error handling.
+        
         This method creates a TCP client endpoint and connects to the specified peer.
-        It initializes a P2PNode protocol as the client initiator and handles the connection.
-        :param ip: The IP address of the peer to connect to.
-        :param port: The port of the peer to connect to.
-        :return: None
+        It initializes a P2PNode protocol as the client initiator and handles the connection
+        with comprehensive error handling and logging.
+        
+        Args:
+            ip: The IP address of the peer to connect to.
+            port: The port of the peer to connect to.
+            
+        Returns:
+            A Deferred that fires with the protocol instance on success or the failure on error.
         """
-        def _connect():
+        if not ip or not isinstance(port, int) or port <= 0:
+            error_msg = f"Invalid connection parameters: ip='{ip}', port={port}"
+            self.logger.error(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        self.logger.info(f"Attempting to connect to peer at {ip}:{port}")
+        
+        try:
             endpoint = TCP4ClientEndpoint(reactor, ip, port)
             protocol = P2PNode(self.factory, self.factory.peers, is_initiator=True)
             d = connectProtocol(endpoint, protocol)
 
-            def on_connect(p):
-                self.logger.info(f"Connected to peer at {ip}:{port} as initiator")
+            def on_connect_success(protocol_instance):
+                self.logger.info(f"Successfully connected to peer at {ip}:{port} as initiator")
+                return protocol_instance
 
-            d.addCallback(on_connect)
-            d.addErrback(lambda e: logging.error(f"Failed to connect to {ip}:{port}: {e}"))
+            def on_connect_failure(failure):
+                error_msg = f"Failed to connect to {ip}:{port}: {failure.getErrorMessage()}"
+                self.logger.error(error_msg)
+                return failure
 
-        # Schedule the connection within the reactor
-        reactor.callWhenRunning(_connect)
+            d.addCallback(on_connect_success)
+            d.addErrback(on_connect_failure)
+            return d
+            
+        except Exception as e:
+            error_msg = f"Exception while attempting connection to {ip}:{port}: {str(e)}"
+            self.logger.error(error_msg)
+            return defer.fail(e)
+
+    def enter(self, ip: str, port: int) -> defer.Deferred:
+        """Connect to a peer network by connecting to a specific IP address and port.
+        
+        This is typically used to join an existing peer network when you know
+        the address of at least one peer in the network.
+        
+        Args:
+            ip: The IP address of the peer to connect to.
+            port: The port of the peer to connect to.
+            
+        Returns:
+            A Deferred that fires when the connection attempt completes.
+            On success, fires with the protocol instance.
+            On failure, fires with the error.
+        """
+        self.logger.info(f"Entering network via peer at {ip}:{port}")
+        return self._connect(ip, port)
+
+    def connect(self, peer_id: str) -> defer.Deferred:
+        """Connect to a known peer using their peer ID.
+        
+        This method looks up the peer's public connection information
+        and attempts to establish a connection to them.
+        
+        Args:
+            peer_id: The ID of the peer to connect to.
+            
+        Returns:
+            A Deferred that fires when the connection attempt completes.
+            On success, fires with the protocol instance.
+            On failure, fires with the error.
+        """
+        if not peer_id:
+            error_msg = "peer_id cannot be empty"
+            self.logger.error(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        if peer_id == self.factory.id:
+            error_msg = "Cannot connect to self"
+            self.logger.error(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        # Get peer information
+        peer_info = self.factory.peers.get_peer_info(peer_id)
+        if not peer_info:
+            error_msg = f"Peer {peer_id} not found in known peers"
+            self.logger.error(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        # Check if already connected
+        if (peer_info.get('local', {}).get('transport') or 
+            peer_info.get('remote', {}).get('transport')):
+            error_msg = f"Already connected to peer {peer_id}"
+            self.logger.warning(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        # Get public connection information
+        public_info = peer_info.get('public')
+        if not public_info:
+            error_msg = f"No public connection information available for peer {peer_id}"
+            self.logger.error(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        ip = public_info.get('host')
+        port = public_info.get('port')
+        
+        if not ip or not port:
+            error_msg = f"Invalid public connection info for peer {peer_id}: host={ip}, port={port}"
+            self.logger.error(error_msg)
+            return defer.fail(ValueError(error_msg))
+        
+        self.logger.info(f"Connecting to known peer {peer_id} at {ip}:{port}")
+        return self._connect(ip, port)
 
     def disconnect(self, peer_id: str) -> bool:
         """Disconnects from a specific peer.
@@ -309,7 +405,7 @@ class SwchAgent():
 
         return True
 
-    def shutdown(self) -> defer.Deferred:
+    def leave(self) -> defer.Deferred:
         """Shuts down the P2P library, closing all connections and releasing resources.
         This method will:
         1. Disable rejoin mechanism to prevent reconnection during shutdown
@@ -418,3 +514,17 @@ class SwchAgent():
                 matching_peer_ids.append(peer_id)
         
         return matching_peer_ids
+
+    def get_peer_metadata(self, peer_id: str) -> Optional[Dict[str, Any]]:
+        """Get metadata for a specific peer by ID.
+        
+        Args:
+            peer_id: The ID of the peer to retrieve metadata for.
+        
+        Returns:
+            A dictionary containing the peer's metadata, or None if not found.
+        """
+        if not self.factory.peers.get_peer_info(peer_id):
+            self.logger.warning(f"Peer {peer_id} not found in known peers")
+            return None
+        return self.factory.peers.get_peer_metadata(peer_id)

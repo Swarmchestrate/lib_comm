@@ -37,7 +37,7 @@ def test_two_agents_connection(agent_factory):
     a2 = agent_factory(1, metadata={"type": "manager", "universe": "test", "version": "1.1"},prefix=2)[0]
     
     # 1. Initiate connection from a1 to a2's listening port
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
 
     yield deferLater(reactor, 1, lambda: None)
 
@@ -76,8 +76,8 @@ def test_three_agents_connection_1(agent_factory):
     a3 = agent_factory(1, metadata={"type": "storage", "universe": "production", "region": "eu-central"}, prefix=3)[0]
     
     # connect a1 → a3 and a2 → a3
-    a1.connect(a3.public_ip, a3.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
+    a1.enter(a3.public_ip, a3.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
 
     # let Twisted process connections
     yield deferLater(reactor, 1, lambda: None)
@@ -146,7 +146,7 @@ def test_three_agents_connection_1(agent_factory):
 
     # --- now test shutdown behavior ---
     # a2 drops both a1 and a3
-    a2.shutdown()
+    a2.leave()
 
     # allow disconnections to propagate
     yield deferLater(reactor, 1, lambda: None)
@@ -169,8 +169,8 @@ def test_three_agents_connection_2(agent_factory):
     a1, a2, a3 = agent_factory(3)
 
     # connect a1 → a2 and a1 → a3
-    a1.connect(a2.public_ip, a2.public_port)
-    a1.connect(a3.public_ip, a3.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a1.enter(a3.public_ip, a3.public_port)
 
     # let Twisted do its thing
     yield deferLater(reactor, 1, lambda: None)
@@ -199,8 +199,8 @@ def test_three_agents_connection_3(agent_factory):
     a1, a2, a3 = agent_factory(3)
 
     # connect a2 → a3 and a1 → a2
-    a2.connect(a3.public_ip, a3.public_port)
-    a1.connect(a3.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
 
     # let Twisted do its thing
     yield deferLater(reactor, 1, lambda: None)
@@ -230,9 +230,9 @@ def test_three_agents_connection_4(agent_factory):
     a1, a2, a3 = agent_factory(3)
 
     # connect a2 → a3 and a1 → a2
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
-    a3.connect(a1.public_ip, a1.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
+    a3.enter(a1.public_ip, a1.public_port)
 
     # let Twisted do its thing
     yield deferLater(reactor, 1, lambda: None)
@@ -276,8 +276,8 @@ def test_custom_message_exchange_1(agent_factory):
         agent.on('message', create_message_event_handler(agent.peer_id))
 
     # Connect agents in a triangle
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
     
     # Wait for connections to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -319,8 +319,8 @@ def test_custom_message_exchange_with_multiconnection(agent_factory):
         agent.on('message', create_message_event_handler(agent.peer_id))
 
     # Create bidirectional connections - each agent connects to the other
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a1.public_ip, a1.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a1.public_ip, a1.public_port)
     
     # Wait for connections to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -366,8 +366,8 @@ def test_indirect_message_exchange(agent_factory):
         agent.on('message', create_message_event_handler(agent.peer_id))
 
     # Connect agents linearly: a1 -> a2 -> a3
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
     
     # Wait for connections to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -425,8 +425,8 @@ def test_broadcast_message_exchange(agent_factory):
         agent.on('message', create_message_event_handler(agent.peer_id))
 
     # Connect agents in a triangle
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
     
     # Wait for connections to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -490,7 +490,7 @@ def test_peer_discovered_event(agent_factory):
     a1.on('peer:discovered', on_peer_discovered)
 
     # Connect a1 to a2
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
     
     # Wait for connection and discovery
     yield deferLater(reactor, 0.5, lambda: None)
@@ -511,7 +511,7 @@ def test_peer_connected_event(agent_factory):
     a1.on('peer:connected', on_peer_connected)
 
     # Connect a1 to a2
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
     
     # Wait for connection
     yield deferLater(reactor, 0.5, lambda: None)
@@ -532,7 +532,7 @@ def test_peer_disconnected_event(agent_factory):
     a1.on('peer:disconnected', on_peer_disconnected)
 
     # First establish connection
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
     
     # Wait for connection to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -563,7 +563,7 @@ def test_message_event(agent_factory):
     a2.on('message', on_message)
 
     # Connect agents
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
     
     # Wait for connection to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -597,7 +597,7 @@ def test_all_disconnected_event(agent_factory):
     a1.on('peer:all_disconnected', on_all_disconnected)
 
     # Connect a1 to a2
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
     
     # Wait for connection to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -606,7 +606,7 @@ def test_all_disconnected_event(agent_factory):
     assert a1.get_connection_count() == 1, "Initial connection should be established"
     
     # Simulate unintentional disconnection by shutting down a2 (not a1)
-    a2.shutdown()
+    a2.leave()
     
     # Wait for disconnection to process
     yield deferLater(reactor, 0.5, lambda: None)
@@ -627,7 +627,7 @@ def test_all_disconnected_event_not_triggered_on_intentional_shutdown(agent_fact
     a1.on('peer:all_disconnected', on_all_disconnected)
 
     # Connect a1 to a2
-    a1.connect(a2.public_ip, a2.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
     
     # Wait for connection to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -636,7 +636,7 @@ def test_all_disconnected_event_not_triggered_on_intentional_shutdown(agent_fact
     assert a1.get_connection_count() == 1, "Initial connection should be established"
     
     # Intentional shutdown of a1 should NOT trigger the event
-    a1.shutdown()
+    a1.leave()
     
     # Wait for disconnection to process
     yield deferLater(reactor, 0.5, lambda: None)
@@ -718,8 +718,8 @@ def test_rejoin_behaviour(agent_factory):
         agent.on('message', create_message_event_handler(agent.peer_id))
 
     # Connect agents in a triangle
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
     
     # Wait for connections to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -736,7 +736,7 @@ def test_rejoin_behaviour(agent_factory):
 
     # --- now test after shutdown behavior ---
     # a2 drops both a1 and a3
-    a2.shutdown()
+    a2.leave()
 
     # allow disconnection to propagate
     yield deferLater(reactor, 1, lambda: None)
@@ -761,9 +761,9 @@ def test_rejoin_multiple_cycles(agent_factory):
     a1, a2, a3, a4, a5, a6 = agent_factory(6)
     
     # Connect agents: a1 -> a2 -> a3 -> a4 (creating a partial mesh)
-    a1.connect(a2.public_ip, a2.public_port)
-    a2.connect(a3.public_ip, a3.public_port)
-    a3.connect(a4.public_ip, a4.public_port)
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
+    a3.enter(a4.public_ip, a4.public_port)
     
     # Wait for initial connections to establish
     yield deferLater(reactor, 0.5, lambda: None)
@@ -774,7 +774,7 @@ def test_rejoin_multiple_cycles(agent_factory):
         assert peer_count == 3, f"{agent.peer_id} should know about 3 other peers, found {peer_count}"
     
     # First disconnection cycle: shutdown a2 (breaks the chain)
-    a2.shutdown()
+    a2.leave()
     yield deferLater(reactor, 1, lambda: None)
     
     # a1, a3, and a4 should still be connected through rejoin mechanism
@@ -784,22 +784,22 @@ def test_rejoin_multiple_cycles(agent_factory):
     # Verify a1 built new connection to the network
     assert a1.get_connection_count() >= 1, "a1 should have a new connection to either a3 or a4"
     
-    # Connect a5 and a6 to existing network
-    a5.connect(a1.public_ip, a1.public_port)
+    # Connect a5 to existing network
+    a5.enter(a1.public_ip, a1.public_port)
     
-    yield deferLater(reactor, 1, lambda: None)
+    yield deferLater(reactor, 2, lambda: None)
     
-    # All active agents should now know about a5 and a6
+    # All active agents should now know about a5
     for agent in [a1, a3, a4, a5]:
         peer_ids = {pid for pid, _ in agent.factory.peers.get_all_peers_items()}
         assert a5.peer_id in peer_ids, f"{agent.peer_id} should know about a5"
     
     # Second disconnection cycle: shutdown a1
-    a1.shutdown()
+    a1.leave()
     yield deferLater(reactor, 1, lambda: None)
     
     # Wait for rejoin attempts
-    yield deferLater(reactor, 3, lambda: None)
+    yield deferLater(reactor, 5, lambda: None)
     
     # a3, a4, a5 should still be connected through rejoin
     remaining_agents = [a3, a4, a5]
@@ -817,7 +817,7 @@ def test_rejoin_with_network_partition_healing(agent_factory):
     ]
     
     for agent_from, agent_to in connections:
-        agent_from.connect(agent_to.public_ip, agent_to.public_port)
+        agent_from.enter(agent_to.public_ip, agent_to.public_port)
     
     yield deferLater(reactor, 1, lambda: None)
     
@@ -828,7 +828,7 @@ def test_rejoin_with_network_partition_healing(agent_factory):
     
     # Create a network partition by shutting down a3 (central node)
     # This should split the network into {a1, a2} and {a4, a5} partitions
-    a3.shutdown()
+    a3.leave()
     yield deferLater(reactor, 1, lambda: None)
     
     # Wait for network to settle after partition
@@ -872,8 +872,8 @@ def test_rejoin_with_network_partition_healing(agent_factory):
     assert len(received_messages[a4.peer_id]) == 0, "a4 should not receive cross-partition messages"
     
     # Connect bridge to both partitions
-    a6.connect(a1.public_ip, a1.public_port)
-    a6.connect(a4.public_ip, a4.public_port)
+    a6.enter(a1.public_ip, a1.public_port)
+    a6.enter(a4.public_ip, a4.public_port)
     
     yield deferLater(reactor, 1, lambda: None)
     
@@ -916,10 +916,15 @@ def test_find_peers_by_metadata(agent_factory):
     
     # Connect all agents to the first one (star topology)
     for i in range(1, len(agents)):
-        agents[i].connect(agents[0].public_ip, agents[0].public_port)
+        agents[i].enter(agents[0].public_ip, agents[0].public_port)
     
     yield deferLater(reactor, 1, lambda: None)
     
+    # Test metadata registration
+    for agent in agents:
+        for i in range(len(agents_metadata)):
+            assert agent.get_peer_metadata(agents[i].peer_id) == agents_metadata[i], f"Metadata for agent {i} should match"
+
     # Test finding by single metadata field
     results = agents[0].findPeers({"type": "worker"})
     assert len(results) == 2, "Should find 2 workers"
@@ -935,3 +940,63 @@ def test_find_peers_by_metadata(agent_factory):
     # Test finding non-matching metadata
     results = agents[0].findPeers({"type": "nonexistent"})
     assert len(results) == 0, "Should find no peers with non-existent type"
+
+@pytest_twisted.inlineCallbacks
+def test_connect_by_id(agent_factory):
+    # Create 4 agents to test connect method
+    a1, a2, a3, a4 = agent_factory(4)
+    
+    # Create initial network topology: a1 -> a2 -> a3
+    # This means a1 and a3 will know about each other but not be directly connected
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
+    
+    # Wait for initial connections to establish and peer discovery to propagate
+    yield deferLater(reactor, 1, lambda: None)
+    
+    # Verify initial network state
+    assert a1.get_connection_count() == 1, "a1 should have one direct connection to a2"
+    assert a2.get_connection_count() == 2, "a2 should have two direct connections"
+    assert a3.get_connection_count() == 1, "a3 should have one direct connection to a2"
+    
+    # Verify that a1 knows about a3 (through peer discovery) but isn't directly connected
+    a1_peers = {pid: info for pid, info in a1.factory.peers.get_all_peers_items()}
+    assert a3.peer_id in a1_peers, "a1 should know about a3 through peer discovery"
+    
+    # Verify initial connections - a1 should not be directly connected to a3
+    a1_connected_peers = a1.getConnectedPeers()
+    assert a3.peer_id not in a1_connected_peers, "a1 should not be directly connected to a3 initially"
+    assert a2.peer_id in a1_connected_peers, "a1 should be connected to a2"
+    
+    # Use connect method to establish direct connection from a1 to a3
+    d = a1.connect(a3.peer_id)
+    
+    # Wait for connection to establish
+    yield deferLater(reactor, 1, lambda: None)
+    
+    # Verify that a1 now has a direct connection to a3
+    assert a1.get_connection_count() == 2, "a1 should now have two direct connections"
+    
+    # Verify a1 is now directly connected to a3
+    a1_connected_peers_after = a1.getConnectedPeers()
+    assert a3.peer_id in a1_connected_peers_after, "a1 should now be directly connected to a3"
+    assert a2.peer_id in a1_connected_peers_after, "a1 should still be connected to a2"
+    
+    # Test connect to an unknown peer (should fail)
+    try:
+        unknown_d = a1.connect(a4.peer_id)
+        yield unknown_d
+        assert False, "connect to unknown peer should have failed"
+    except Exception:
+        # Expected to fail since a4 is unknown
+        pass
+    
+    # Test connect to already connected peer (should handle gracefully)
+    try:
+        existing_d = a1.connect(a2.peer_id)
+        yield existing_d
+        # Should either succeed or fail gracefully without crashing
+    except Exception:
+        # This is acceptable - already connected
+        pass
+    

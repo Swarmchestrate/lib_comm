@@ -133,9 +133,11 @@ class P2PNode(Protocol):
         self.factory.on_peer_connected()
 
         message = {
-            "message_type": "peer_list_add",
-            "peers": self.factory.peers.get_known_peers_public_info(),
-            }
+            "message_type": "broadcast_peer_list_add",
+            "message_id": str(uuid.uuid4()),
+            "peer_id":    self.factory.id,
+            "peers":      self.factory.peers.get_known_peers_public_info(),
+        }
         self.factory.send_message(message, self.transport)
 
     def broadcast_peer_list(self):
