@@ -504,7 +504,7 @@ def test_peer_connected_event(agent_factory):
     connection_count = 0
 
     # Register event handler for peer connection
-    def on_peer_connected():
+    def on_peer_connected(peer_id):
         nonlocal connection_count
         connection_count += 1
 
@@ -525,7 +525,7 @@ def test_peer_disconnected_event(agent_factory):
     disconnection_count = 0
 
     # Register event handler for peer disconnection
-    def on_peer_disconnected():
+    def on_peer_disconnected(peer_id):
         nonlocal disconnection_count
         disconnection_count += 1
 
@@ -541,7 +541,7 @@ def test_peer_disconnected_event(agent_factory):
     assert a1.get_connection_count() == 1, "Initial connection should be established"
     
     # Disconnect from peer
-    a1.disconnect(a2.peer_id)
+    a2.leave()
     
     # Wait for disconnection to process
     yield deferLater(reactor, 0.5, lambda: None)

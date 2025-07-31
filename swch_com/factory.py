@@ -42,6 +42,7 @@ class P2PFactory(Factory):
             'peer:connected': [],
             'peer:disconnected': [],
             'peer:discovered': [],
+            'peer:undiscovered': [],
             'peer:all_disconnected': [],
             'message': []
         }
@@ -83,12 +84,10 @@ class P2PFactory(Factory):
     def _increment_connection_count(self):
         """Private method to increment connection count"""
         self._connection_count += 1
-        self.logger.info(f"Connection established. Connection count: {self._connection_count}")
 
     def _decrement_connection_count(self):
         """Private method to decrement connection count"""
         self._connection_count -= 1
-        self.logger.info(f"Connection lost. Connection count: {self._connection_count}")
 
     def get_connection_count(self) -> int:
         """Private method to get current connection count"""
@@ -149,6 +148,17 @@ class P2PFactory(Factory):
             self.logger.info(f"Sending message to peer {peer_id}")
             self.send_message(message, transport)
 
+    def broadcast_remove_peer(self, peer_id: str):
+        """Broadcast a message to all peers to remove a disconnected peer."""
+        message_id = str(uuid.uuid4())
+        message = {
+            "message_type": "system_broadcast_remove_peer",
+            "message_id": message_id,
+            "peer_id": self.id,
+            "remove_peer_id": peer_id,
+        }
+        self.send_message(message)
+
     def add_event_listener(self, event_name, listener):
         """Register an event listener for a specific event"""
         if event_name in self.event_listeners:
@@ -165,15 +175,17 @@ class P2PFactory(Factory):
         """Set the shutdown state to distinguish intentional vs unintentional disconnections"""
         self._is_shutting_down = shutting_down
 
-    def on_peer_connected(self):
+    def on_peer_connected_event(self, peer_id: str):
         """Trigger the peer:connected event"""
         self._increment_connection_count()
+        self.logger.info(f"Connection established with {peer_id}. Connection count: {self._connection_count}")
         for listener in self.event_listeners.get('peer:connected', []):
-            listener()
+            listener(peer_id)
 
-    def on_peer_disconnected(self):
+    def on_peer_disconnected_event(self, peer_id: str):
         """Trigger the peer:disconnected event"""
         self._decrement_connection_count()
+        self.logger.info(f"Connection lost with {peer_id}. Connection count: {self._connection_count}")
         
         # Check if this was the last connection and it wasn't intentional
         if self._connection_count == 0 and not self._is_shutting_down:
@@ -182,11 +194,16 @@ class P2PFactory(Factory):
                 listener()
         
         for listener in self.event_listeners.get('peer:disconnected', []):
-            listener()
+            listener(peer_id)
 
-    def add_peer_discovered_event(self, peer_id: str):
+    def on_peer_discovered_event(self, peer_id: str):
         """Trigger the peer:discovered event"""
         for listener in self.event_listeners.get('peer:discovered', []):
+            listener(peer_id)
+    
+    def on_peer_undiscovered_event(self, peer_id: str):
+        """Trigger the peer:undiscovered event"""
+        for listener in self.event_listeners.get('peer:undiscovered', []):
             listener(peer_id)
 
     def emit_message(self, peer_id: str, message: dict):

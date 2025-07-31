@@ -72,7 +72,7 @@ if __name__ == "__main__":
             logging.error("Invalid format for --join. Expected format is ip:port")
             sys.exit(1)
 
-        com.connect(join_ip,join_port)
+        com.enter(join_ip,join_port)
 
     """
     def handle_ping(sender_id, message):
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     heartbeat_task = LoopingCall(send_ping)
     heartbeat_task.start(2)
     """
-    com.run()
+    com.start()
 
     """
     def client_submit(clientid, message):

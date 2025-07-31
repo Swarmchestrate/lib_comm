@@ -326,7 +326,6 @@ class SwchAgent():
             On success, fires with the protocol instance.
             On failure, fires with the error.
         """
-        self.logger.info(f"Entering network via peer at {ip}:{port}")
         return self._connect(ip, port)
 
     def connect(self, peer_id: str) -> defer.Deferred:
@@ -385,7 +384,7 @@ class SwchAgent():
         self.logger.info(f"Connecting to known peer {peer_id} at {ip}:{port}")
         return self._connect(ip, port)
 
-    def disconnect(self, peer_id: str) -> bool:
+    def _disconnect(self, peer_id: str, leave: bool= False) -> bool:
         """Disconnects from a specific peer.
         This method will close both local and remote connections if they exist.
         :param peer_id: The ID of the peer to disconnect from.
@@ -396,6 +395,10 @@ class SwchAgent():
             self.logger.warning(f"Cannot disconnect: peer {peer_id} not found")
             return False
 
+        if not leave and self.factory.get_connection_count() < 2:
+            self.logger.warning("Cannot disconnect: this is the last connection")
+            return False
+
         # Close both local and remote connections if they exist
         for connection_type in ['local', 'remote']:
             if connection_type in peer_info and 'transport' in peer_info[connection_type]:
@@ -404,6 +407,14 @@ class SwchAgent():
                     transport.loseConnection()
 
         return True
+
+    def disconnect(self, peer_id: str) -> bool:
+        """Disconnects from a specific peer.
+        This method will close both local and remote connections if they exist.
+        :param peer_id: The ID of the peer to disconnect from.
+        :return: True if the disconnection was successful, False otherwise.
+        """
+        self._disconnect(peer_id)
 
     def leave(self) -> defer.Deferred:
         """Shuts down the P2P library, closing all connections and releasing resources.
@@ -422,6 +433,9 @@ class SwchAgent():
         # Mark as shutting down to prevent triggering all_disconnected event
         self.factory.set_shutting_down(True)
         
+        # Send system remove peer message to all peers
+        self.factory.broadcast_remove_peer(self.peer_id)
+
         # Get list of connected peers before starting disconnections
         connected_peers = self.getConnectedPeers()
         
@@ -434,7 +448,7 @@ class SwchAgent():
         shutdown_deferred = defer.Deferred()
         remaining_disconnections = [len(connected_peers)]  # Use list for mutable reference
         
-        def on_disconnection_complete():
+        def on_disconnection_complete(peer_id):
             remaining_disconnections[0] -= 1
             self.logger.debug(f"Disconnection complete. Remaining: {remaining_disconnections[0]}")
             if remaining_disconnections[0] == 0:
@@ -446,7 +460,7 @@ class SwchAgent():
         
         # Disconnect from all connected peers
         for peer_id in connected_peers:
-            self.disconnect(peer_id)
+            self._disconnect(peer_id, leave=True)
         
         return shutdown_deferred
     
@@ -463,17 +477,15 @@ class SwchAgent():
         
         self.logger.info("SwchAgent shutdown complete")
 
-    def run(self):
-        """Start the Twisted reactor."""
-        self.logger.info("Starting Twisted reactor...")
+    def start(self):
+        """Start the SwarmChestrate P2P system"""
+        self.logger.info("Starting SwarmChestrate P2P system...")
         reactor.run()
-        self.logger.info("Twisted reactor started")
 
     def stop(self):
-        """Stop the Twisted reactor."""
-        self.logger.info("Stopping Twisted reactor...")
+        """Stop the SwarmChestrate P2P system."""
         reactor.stop()
-        self.logger.info("Twisted reactor stopped")
+        self.logger.info("Stopping SwarmChestrate P2P system...")
 
     def findPeers(self, metadata=None):
         """
