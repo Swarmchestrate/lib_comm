@@ -174,38 +174,76 @@ class SwchAgent():
         return d
 
     def enable_rejoin(self):
-        """Enable the automatic rejoin mechanism"""
+        """Enable the automatic rejoin mechanism for network resilience."""
         self._rejoin_enabled = True
         self.logger.info("Rejoin mechanism enabled")
 
     def disable_rejoin(self):
-        """Disable the automatic rejoin mechanism"""
+        """Disable the automatic rejoin mechanism."""
         self._rejoin_enabled = False
         self.logger.info("Rejoin mechanism disabled")
 
     def is_rejoin_enabled(self):
-        """Check if rejoin mechanism is enabled"""
+        """Check if the automatic rejoin mechanism is currently enabled.
+        
+        Returns:
+            True if automatic rejoin is enabled, False otherwise.
+        """
         return self._rejoin_enabled
 
     def is_rejoin_in_progress(self):
-        """Check if rejoin is currently in progress"""
+        """Check if an automatic rejoin attempt is currently in progress."""
         return self._rejoin_in_progress
 
     def register_message_handler(self, message_type: str, func: Callable[[str, Dict[str, Any]], None]) -> None:
         """Register a custom message handler for a specific message type.
-        :param message_type: The type of message to handle.
-        :param func: The function to call when a message of this type is received.
-        The function should accept two parameters: sender_id and message.
-        :return: None
+        
+        This method allows you to define custom handlers for specific message types
+        that will be called when messages of that type are received from other peers.
+        The handler function will receive the sender's peer ID and the complete message.
+        
+        Args:
+            message_type: The type of message to handle (e.g., 'chat', 'data_sync').
+            func: The callback function to invoke when a message of this type is received.
+                  The function should accept two parameters:
+                  - sender_id (str): The peer ID of the message sender
+                  - message (Dict[str, Any]): The complete message dictionary
+                  
+        Returns:
+            None
+            
+        Example:
+            def handle_chat(sender_id, message):
+                print(f"Chat from {sender_id}: {message['payload']['text']}")
+            
+            agent.register_message_handler('chat', handle_chat)
         """
         self.factory.user_defined_msg_handlers[message_type] = func
 
     def send(self, peer_id: str, message_type: str, payload: Dict[str, Any]) -> None:
         """Send a message to a specific peer with a message type and payload.
-        :param peer_id: The ID of the peer to send the message to.
-        :param message_type: The type of the message being sent.
-        :param payload: The payload of the message, which can be any serializable dictionary.
-        :return: None
+        
+        This method sends a targeted message to a specific peer in the network.
+        The message will include the specified type and payload, along with routing
+        information to ensure it reaches the intended recipient.
+        
+        Args:
+            peer_id: The unique identifier of the peer to send the message to.
+                    Must be a valid peer ID of a known peer in the network.
+            message_type: The type of the message being sent (e.g., 'chat', 'data_request').
+                         This will be used by the recipient to route the message to
+                         the appropriate handler.
+            payload: The message payload containing the actual data to send.
+                    Must be a dictionary with serializable values.
+                    
+        Returns:
+            None
+            
+        Raises:
+            ValueError: If the peer_id is not found in the known peers.
+            
+        Example:
+            agent.send('peer123', 'chat', {'text': 'Hello!', 'timestamp': time.time()})
         """
         message = {
             'message_type': message_type,
@@ -216,9 +254,27 @@ class SwchAgent():
 
     def broadcast(self, message_type: str, payload: Dict[str, Any]) -> None:
         """Broadcast a message to all connected peers with a message type and payload.
-        :param message_type: The type of the message being broadcast.
-        :param payload: The payload of the message, which can be any serializable dictionary.
-        :return: None
+        
+        This method sends a message to all peers in the network.
+        The message will be delivered to every peer that has an active connection,
+        and each peer will receive the message with the specified type and payload.
+        
+        Args:
+            message_type: The type of the message being broadcast (e.g., 'announcement', 'update').
+                         This will be used by recipients to route the message to
+                         the appropriate handlers.
+            payload: The message payload containing the actual data to broadcast.
+                    Must be a dictionary with serializable values that will be
+                    sent to all connected peers.
+                    
+        Returns:
+            None
+            
+        Example:
+            agent.broadcast('announcement', {
+                'message': 'Server maintenance in 10 minutes',
+                'timestamp': time.time()
+            })
         """
         message = {
             'message_type': message_type,
@@ -228,8 +284,19 @@ class SwchAgent():
         self.factory.send_message(message)
 
     def get_connection_count(self) -> int:
-        """Public method to get the current connection count
-        :return: The number of currently active connections.
+        """Get the current number of active peer connections.
+        
+        This method returns the total count of currently active connections
+        to other peers in the network. This includes both incoming and outgoing
+        connections that are established and functioning.
+        
+        Returns:
+            The number of currently active peer connections as an integer.
+            Returns 0 if no peers are connected.
+            
+        Example:
+            count = agent.get_connection_count()
+            print(f"Currently connected to {count} peers")
         """
         return self.factory.get_connection_count()
 
@@ -241,20 +308,49 @@ class SwchAgent():
         logging.info(f"Peer listening for connections on {ip}:{port}...")
 
     def on(self, event_name: str, listener: Callable) -> 'SwchAgent':
-        """Register an event listener directly with the factory
-        for a specific event.
-        :param event_name: The name of the event to listen for.
-        :param listener: The callback function to be called when the event occurs.
-        :return: self for method chaining.
+        """Register an event listener for a specific event type.
+        
+        This method allows you to register callback functions that will be invoked
+        when specific events occur in the P2P network. Events include peer connections,
+        disconnections, and other network state changes. The method supports chaining
+        for convenient multiple event listener registration.
+        
+        Args:
+            event_name: The name of the event to listen for. Event names include:
+                       - 'peer:connected': When a new peer connects us
+                       - 'peer:disconnected': When a peer disconnects from us
+                       - 'peer:all_disconnected': When all peers disconnect from us (also used for rejoin mechanisn)
+                       - 'peer:discovered': When a new peer is discovered in the network
+                       - 'peer:undiscovered': When a peer disconnects from the network
+                       - 'message': When a message is received from another peer
+            listener: The callback function to invoke when the event occurs.
+                     The function signature depends on the event type.
+                     
+        Returns:
+            The SwchAgent instance for method chaining.
+            
+        Example:
+            agent.on('peer:connected', lambda peer_id: print(f"Peer {peer_id} connected"))
+                 .on('peer:disconnected', lambda peer_id: print(f"Peer {peer_id} disconnected"))
         """
         self.factory.add_event_listener(event_name, listener)
         return self
 
     def getConnectedPeers(self) -> List[str]:
-        """Returns a list of currently connected peers.
-        This method checks both local and remote connections for each peer
-        and returns a list of peer IDs that have an active transport.
-        :return: List of peer IDs that are currently connected.
+        """Get a list of peer IDs with live connection to us.
+        
+        This method examines all known peers and returns a list containing the IDs
+        of peers that currently have active transport connections (either local or remote).
+        The returned list excludes the peer's own ID.
+        
+        Returns:
+            A list of peer ID strings representing currently connected peers.
+            Returns an empty list if no peers are connected.
+            
+        Example:
+            connected = agent.getConnectedPeers()
+            for peer_id in connected:
+                print(f"Connected to peer: {peer_id}")
         """
         connected_peers = []
         for peer_id, peer_info in self.factory.peers.get_all_peers_items():
@@ -268,19 +364,7 @@ class SwchAgent():
         return connected_peers
 
     def _connect(self, ip: str, port: int) -> defer.Deferred:
-        """Connect to a specific peer at the given IP and port with proper error handling.
-        
-        This method creates a TCP client endpoint and connects to the specified peer.
-        It initializes a P2PNode protocol as the client initiator and handles the connection
-        with comprehensive error handling and logging.
-        
-        Args:
-            ip: The IP address of the peer to connect to.
-            port: The port of the peer to connect to.
-            
-        Returns:
-            A Deferred that fires with the protocol instance on success or the failure on error.
-        """
+        """Connect to a specific peer at the given IP and port with proper error handling."""
         if not ip or not isinstance(port, int) or port <= 0:
             error_msg = f"Invalid connection parameters: ip='{ip}', port={port}"
             self.logger.error(error_msg)
@@ -312,35 +396,56 @@ class SwchAgent():
             return defer.fail(e)
 
     def enter(self, ip: str, port: int) -> defer.Deferred:
-        """Connect to a peer network by connecting to a specific IP address and port.
+        """Join a peer network by connecting to a specific peer address.
         
-        This is typically used to join an existing peer network when you know
-        the address of at least one peer in the network.
+        This method is typically used to join an existing peer network when you know
+        the IP address and port of at least one peer in the network. Once connected,
+        the peer discovery mechanism will help you learn about other peers in the network.
         
         Args:
-            ip: The IP address of the peer to connect to.
-            port: The port of the peer to connect to.
-            
+            ip: The IP address of the peer to connect to. Must be a valid IPv4 address
+                or hostname that can be resolved.
+            port: The port number of the peer to connect to. Must be a valid port number
+                  (1-65535) where the target peer is listening for connections.
+                  
         Returns:
-            A Deferred that fires when the connection attempt completes.
-            On success, fires with the protocol instance.
-            On failure, fires with the error.
+            A Deferred that fires when the connection attempt completes:
+            - On success: fires with the protocol instance
+            - On failure: fires with the error that occurred
+            
+        Example:
+            d = agent.enter('192.168.1.100', 8080)
+            d.addCallback(lambda protocol: print("Successfully joined network"))
+            d.addErrback(lambda failure: print(f"Failed to join: {failure.getErrorMessage()}"))
         """
         return self._connect(ip, port)
 
     def connect(self, peer_id: str) -> defer.Deferred:
         """Connect to a known peer using their peer ID.
         
-        This method looks up the peer's public connection information
-        and attempts to establish a connection to them.
+        This method establishes a connection to a peer that is already known to the
+        local peer registry. It looks up the peer's public connection information
+        and attempts to establish a direct connection. The peer must have been
+        discovered previously through the network.
         
         Args:
-            peer_id: The ID of the peer to connect to.
-            
+            peer_id: The unique identifier of the peer to connect to. Must be a valid
+                    peer ID that exists in the known peers registry and is not the
+                    current peer's own ID.
+                    
         Returns:
-            A Deferred that fires when the connection attempt completes.
-            On success, fires with the protocol instance.
-            On failure, fires with the error.
+            A Deferred that fires when the connection attempt completes:
+            - On success: fires with the protocol instance
+            - On failure: fires with a ValueError for invalid parameters or connection errors
+            
+        Raises:
+            ValueError: If peer_id is empty, refers to self, peer not found, already connected,
+                       or peer lacks public connection information.
+                       
+        Example:
+            d = agent.connect('peer-uuid-123')
+            d.addCallback(lambda protocol: print(f"Connected to peer {peer_id}"))
+            d.addErrback(lambda failure: print(f"Connection failed: {failure.getErrorMessage()}"))
         """
         if not peer_id:
             error_msg = "peer_id cannot be empty"
@@ -385,11 +490,7 @@ class SwchAgent():
         return self._connect(ip, port)
 
     def _disconnect(self, peer_id: str, leave: bool= False) -> bool:
-        """Disconnects from a specific peer.
-        This method will close both local and remote connections if they exist.
-        :param peer_id: The ID of the peer to disconnect from.
-        :return: True if the disconnection was successful, False otherwise.
-        """
+        """Disconnects from a specific peer."""
         peer_info = self.factory.peers.get_peer_info(peer_id)
         if not peer_info:
             self.logger.warning(f"Cannot disconnect: peer {peer_id} not found")
@@ -409,21 +510,50 @@ class SwchAgent():
         return True
 
     def disconnect(self, peer_id: str) -> bool:
-        """Disconnects from a specific peer.
-        This method will close both local and remote connections if they exist.
-        :param peer_id: The ID of the peer to disconnect from.
-        :return: True if the disconnection was successful, False otherwise.
+        """Disconnect from a specific peer.
+        
+        This method terminates the connection to a specified peer by closing both
+        local and remote transport connections if they exist. The disconnection
+        will trigger appropriate cleanup and event notifications. Note that if this
+        is the last remaining connection, the disconnect may be prevented to avoid
+        complete network isolation.
+        
+        Args:
+            peer_id: The unique identifier of the peer to disconnect from. Must be
+                    a valid peer ID of a currently connected peer.
+                    
+        Returns:
+            True if the disconnection was initiated successfully, False if the peer
+            was not found or disconnection was prevented (e.g., last connection).
+            
+        Example:
+            success = agent.disconnect('peer-uuid-123')
+            if success:
+                print("Disconnection initiated")
+            else:
+                print("Could not disconnect from peer")
         """
         self._disconnect(peer_id)
 
     def leave(self) -> defer.Deferred:
-        """Shuts down the P2P library, closing all connections and releasing resources.
-        This method will:
-        1. Disable rejoin mechanism to prevent reconnection during shutdown
-        2. Mark the agent as shutting down to prevent triggering unintentional disconnect events
-        3. Disconnect from all connected peers and wait for disconnections to complete
-        4. Clear peer information and reset shutdown state for potential reuse
-        :return: A Deferred that fires when shutdown is complete
+        """Gracefully leave the peer network and shutdown the agent.
+        
+        This method performs a complete shutdown of the SwchAgent, including:
+        1. Disabling the rejoin mechanism to prevent reconnection during shutdown
+        2. Notifying all connected peers of the departure
+        3. Closing all active connections and waiting for disconnections to complete
+        4. Clearing the peer registry and resetting internal state
+        
+        The method ensures a clean shutdown that properly notifies other peers
+        and releases all network resources.
+        
+        Returns:
+            A Deferred that fires when the shutdown process is complete.
+            The deferred will fire with None on successful completion.
+            
+        Example:
+            d = agent.leave()
+            d.addCallback(lambda _: print("Successfully left the network"))
         """
         self.logger.info("Shutting down SwchAgent...")
         
@@ -488,14 +618,36 @@ class SwchAgent():
         self.logger.info("Stopping SwarmChestrate P2P system...")
 
     def findPeers(self, metadata=None):
-        """
-        Searches for peers based on metadata criteria. 
+        """Search for peers based on metadata criteria.
+        
+        This method searches through all known peers and returns those that match
+        the specified metadata criteria. If no metadata is provided, it returns
+        all known peers except the current peer. The search performs exact matching
+        on all specified metadata fields.
         
         Args:
-            metadata (dict, optional): Custom metadata to match
+            metadata (dict, optional): A dictionary of metadata key-value pairs to match.
+                                     If None or empty, returns all known peers.
+                                     All specified criteria must match for a peer
+                                     to be included in the results.
         
         Returns:
-            list: List of matching peer IDs excluding self
+            A list of peer ID strings that match the search criteria.
+            The current peer's ID is always excluded from results.
+            
+        Example:
+            # Find all peers in the same universe
+            universe_peers = agent.findPeers({'universe': 'production'})
+            
+            # Find all worker type peers
+            workers = agent.findPeers({'peer_type': 'worker'})
+            
+            # Find peers matching multiple criteria
+            specific_peers = agent.findPeers({
+                'universe': 'test',
+                'peer_type': 'coordinator',
+                'version': '2.1'
+            })
         """
         if metadata is None:
             metadata = {}
@@ -528,13 +680,27 @@ class SwchAgent():
         return matching_peer_ids
 
     def get_peer_metadata(self, peer_id: str) -> Optional[Dict[str, Any]]:
-        """Get metadata for a specific peer by ID.
+        """Retrieve metadata for a specific peer by their ID.
+        
+        This method looks up and returns the metadata dictionary associated with
+        a specific peer. Metadata includes attributes that were provided when
+        the peer joined the network.
         
         Args:
-            peer_id: The ID of the peer to retrieve metadata for.
+            peer_id: The unique identifier of the peer whose metadata to retrieve.
+                    Must be a valid peer ID of a known peer in the network.
         
         Returns:
-            A dictionary containing the peer's metadata, or None if not found.
+            A dictionary containing the peer's metadata if the peer is found,
+            or None if the peer ID is not found in the known peers registry.
+            
+        Example:
+            metadata = agent.get_peer_metadata('peer-uuid-123')
+            if metadata:
+                print(f"Peer type: {metadata.get('peer_type', 'unknown')}")
+                print(f"Universe: {metadata.get('universe', 'default')}")
+            else:
+                print("Peer not found")
         """
         if not self.factory.peers.get_peer_info(peer_id):
             self.logger.warning(f"Peer {peer_id} not found in known peers")
