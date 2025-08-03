@@ -1,7 +1,5 @@
 import logging
 import uuid
-import socket
-import json
 from typing import Optional, Dict, Any, List, Callable
 
 from twisted.internet import reactor, defer
@@ -79,21 +77,11 @@ class SwchAgent():
         self._rejoin_in_progress = True
         self.logger.info("Starting rejoin attempts...")
         
-        # Get all known peers with public information (excluding ourselves)
-        known_peers = self.factory.peers.get_known_peers_public_info(exclude_peer_id=self.factory.id)
-        
-        if not known_peers:
-            self.logger.warning("No known peers to reconnect to")
-            self._rejoin_in_progress = False
-            return
-        
-        self.logger.info(f"Found {len(known_peers)} known peers to attempt reconnection")
-        
         # Start the rejoin process
-        d = self._try_rejoin_with_peers(known_peers, 0)
+        d = self._try_rejoin_with_peers(0)
         d.addBoth(lambda _: setattr(self, '_rejoin_in_progress', False))
 
-    def _try_rejoin_with_peers(self, known_peers, attempt):
+    def _try_rejoin_with_peers(self, attempt):
         """Try to rejoin with known peers using exponential backoff"""
         if attempt >= self._max_rejoin_attempts:
             self.logger.warning(f"Max rejoin attempts ({self._max_rejoin_attempts}) reached")
@@ -108,6 +96,11 @@ class SwchAgent():
         
         self.logger.info(f"Rejoin attempt {attempt + 1}/{self._max_rejoin_attempts} after {delay}s delay")
         
+        # Get all known peers with public information (excluding ourselves)
+        known_peers = self.factory.peers.get_known_peers_public_info(exclude_peer_id=self.factory.id)
+        if not known_peers:
+            self.logger.warning("No peers available for rejoin")            
+
         # Try connecting to peers sequentially
         d = self._try_sequential_connections(known_peers, 0)
         
@@ -117,7 +110,7 @@ class SwchAgent():
                 return defer.succeed(None)
             # Wait for delay and try again if no connection was established
             return deferLater(reactor, delay, lambda: None).addCallback(
-                lambda _: self._try_rejoin_with_peers(known_peers, attempt + 1)
+                lambda _: self._try_rejoin_with_peers(attempt + 1)
             )
         
         d.addCallback(check_and_continue)
@@ -147,11 +140,15 @@ class SwchAgent():
             # Try next peer
             return self._try_sequential_connections(known_peers, peer_index + 1)
         
+        def on_success(peer_id):
+            return defer.succeed(True)
+
         def on_error(failure):
             # Connection failed, try next peer
             return self._try_sequential_connections(known_peers, peer_index + 1)
         
-        d.addCallback(on_result)
+        #d.addCallback(on_result)
+        self.factory.add_event_listener('peer:connected', on_success)
         d.addErrback(on_error)
         return d
 
@@ -499,6 +496,13 @@ class SwchAgent():
         if not leave and self.factory.get_connection_count() < 2:
             self.logger.warning("Cannot disconnect: this is the last connection")
             return False
+        
+        if not leave:
+            # Notify the peer about the intentional disconnect
+            self.factory.send_intentional_disconnect(peer_id)
+
+            # Set intentional disconnect flag
+            self.factory.peers.set_is_intentional_disconnect(peer_id, True)
 
         # Close both local and remote connections if they exist
         for connection_type in ['local', 'remote']:

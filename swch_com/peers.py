@@ -64,7 +64,7 @@ class Peers:
             items = []
             for peer_id, peer_info in self.peers.items():
                 peer_copy = {}
-                for location in ["local", "remote", "public", "metadata"]:
+                for location in ["local", "remote", "public", "metadata", "is_intentional_disconnect"]:
                     if location in peer_info:
                         if location in ["local", "remote"] and peer_info[location] and "transport" in peer_info[location]:
                             # Shallow copy for transport-containing dicts to preserve transport references
@@ -87,6 +87,7 @@ class Peers:
                     "remote": {},
                     "public": {},
                     "metadata": {},
+                    "is_intentional_disconnect": False
                 }
 
     def set_local_info(self, peer_id: str, host: str, port: str, transport) -> None:
@@ -138,6 +139,34 @@ class Peers:
                 "port": port
             }
 
+    def set_is_intentional_disconnect(self, peer_id: str, is_intentional: bool) -> bool:
+        """
+        Set whether the disconnect for a given peer was intentional.
+
+        :param peer_id: Identifier for the peer.
+        :param
+        is_intentional: Boolean indicating if the disconnect was intentional.
+        :return: True if the peer exists and the value was set, False otherwise.
+        """
+        with self._lock:
+            if peer_id not in self.peers:
+                return False
+            self.peers[peer_id]["is_intentional_disconnect"] = is_intentional
+            return True
+        
+    def get_is_intentional_disconnect(self, peer_id: str) -> bool:
+        """
+        Check if the disconnect for a given peer was intentional.
+
+        :param peer_id: Identifier for the peer. True if he isnt found and thats because
+          we already deleted him so it was intentioanl
+        :return: True if the disconnect was intentional
+        """
+        with self._lock:
+            if peer_id not in self.peers:
+                return True
+            return self.peers.get(peer_id, {}).get("is_intentional_disconnect", False)
+
     def set_peer_metadata(self, peer_id: str, metadata: dict) -> bool:
         """
         Set the metadata for a given peer.
@@ -174,7 +203,7 @@ class Peers:
             if peer_info:
                 # Create a safe copy that preserves transport references
                 peer_copy = {}
-                for location in ["local", "remote", "public", "metadata"]:
+                for location in ["local", "remote", "public", "metadata", "is_intentional_disconnect"]:
                     if location in peer_info:
                         if location in ["local", "remote"] and peer_info[location] and "transport" in peer_info[location]:
                             # Shallow copy for transport-containing dicts

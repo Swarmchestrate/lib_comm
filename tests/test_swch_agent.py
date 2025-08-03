@@ -257,6 +257,41 @@ def test_three_agents_connection_4(agent_factory):
     assert sorted_a1 == sorted_a2 == sorted_a3, "Peer information lists are not identical"
 
 @pytest_twisted.inlineCallbacks
+def test_three_agents_intentional_disconnect(agent_factory):
+    # create 3 agents
+    a1, a2, a3 = agent_factory(3)
+
+    # connect a1 → a2 and a2 → a3 and a3 → a1
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
+    a3.enter(a1.public_ip, a1.public_port)
+
+    # let Twisted do its thing
+    yield deferLater(reactor, 1, lambda: None)
+
+    # initial connectivity checks
+    assert a1.get_connection_count() == 2, "a1 should have two outgoing connections"
+    assert a2.get_connection_count() == 2, "a2 should have one incoming connection"
+    assert a3.get_connection_count() == 2, "a3 should have one incoming connection"
+
+    # disconnect a1 from both peers
+    a1.disconnect(a2.peer_id)
+
+    # allow disconnections to propagate
+    yield deferLater(reactor, 2, lambda: None)
+
+    # verify connections
+    assert a1.get_connection_count() == 1, "a1 should have no active connections after leave"
+    assert a2.get_connection_count() == 1, "a2 should have no active connections after a1 leaves"
+    assert a3.get_connection_count() == 2, "a3 should have no active connections after a1 leaves"
+
+    # verify peer info
+    all_agents = [a1, a2, a3]
+    for agent in all_agents:
+        peer_count = len([pid for pid, _ in agent.factory.peers.get_all_peers_items() if pid != agent.peer_id])
+        assert peer_count == 2, f"{agent.peer_id} should know about 2 other peers still"
+
+@pytest_twisted.inlineCallbacks
 def test_custom_message_exchange_1(agent_factory):
     # Create 3 agents
     a1, a2, a3 = agent_factory(3)
@@ -779,7 +814,7 @@ def test_rejoin_multiple_cycles(agent_factory):
     
     # a1, a3, and a4 should still be connected through rejoin mechanism
     # Wait for rejoin to complete
-    yield deferLater(reactor, 2, lambda: None)
+    yield deferLater(reactor, 4, lambda: None)
     
     # Verify a1 built new connection to the network
     assert a1.get_connection_count() >= 1, "a1 should have a new connection to either a3 or a4"
@@ -799,7 +834,7 @@ def test_rejoin_multiple_cycles(agent_factory):
     yield deferLater(reactor, 1, lambda: None)
     
     # Wait for rejoin attempts
-    yield deferLater(reactor, 5, lambda: None)
+    yield deferLater(reactor, 4, lambda: None)
     
     # a3, a4, a5 should still be connected through rejoin
     remaining_agents = [a3, a4, a5]

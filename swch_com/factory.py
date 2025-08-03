@@ -119,7 +119,7 @@ class P2PFactory(Factory):
         else:
             for transport in self.peers.get_peer_transports():
                 transport.write(data)
-
+            
     def send_to_peer(self, peer_id: str, message: dict) -> None:
         """Send a message to a specific peer identified by peer_id.
         If the peer is not connected, the message will be sent to all connected peers.
@@ -158,6 +158,16 @@ class P2PFactory(Factory):
             "remove_peer_id": peer_id,
         }
         self.send_message(message)
+
+    def send_intentional_disconnect(self, peer_id: str):
+        """Send a message to indicate an intentional disconnect."""
+        message_id = str(uuid.uuid4())
+        message = {
+            "message_type": "system_send_intentional_disconnect",
+            "message_id": message_id,
+            "peer_id": self.id,
+        }
+        self.send_to_peer(peer_id, message)
 
     def add_event_listener(self, event_name, listener):
         """Register an event listener for a specific event"""

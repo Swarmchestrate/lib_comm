@@ -73,6 +73,8 @@ class P2PNode(Protocol):
                 self.handle_welcome_info(message)
             case "system_broadcast_remove_peer":
                 self.handle_remove_peer(message)
+            case "system_send_intentional_disconnect":
+                self.handle_intentional_disconnect(message)
             case _:
                 # Forward message if we're not the target or not broadcast
                 if target_id not in ("*", self.factory.id):
@@ -129,7 +131,7 @@ class P2PNode(Protocol):
             self.peers.set_peer_metadata(remote_peer_id, message.get("peer_metadata", {}))
 
             # Log the public peer list
-            self.log_public_peer_list(message=f"Peer {remote_peer_id} connected. Updated peer list") 
+            self.log_public_peer_list(message=f"Peer {remote_peer_id} entered. Updated peer list") 
             
         peer = self.transport.getPeer()
         if self.is_initiator:
@@ -196,9 +198,9 @@ class P2PNode(Protocol):
         peer_id = message.get("remove_peer_id")
         if peer_id:
             if self.peers.remove_peer_info(peer_id):
-                self.log_public_peer_list(message=f"Peer {peer_id} disconnected. Peer list updated")    
+                self.log_public_peer_list(message=f"Peer {peer_id} left. Peer list updated")    
             else:
-                self.logger.warning(f"Peer {peer_id} not found in peer list.")
+                self.logger.debug(f"Peer {peer_id} not found in peer list.")
             
         # Raise peer undiscovered event
         self.factory.on_peer_undiscovered_event(peer_id)
@@ -206,18 +208,46 @@ class P2PNode(Protocol):
         # Propagate the removal to other peers
         self.factory.send_message(message)
 
+    def handle_intentional_disconnect(self, message: Dict[str, Any]):
+        """Handle intentional disconnect from a peer."""
+        self.peers.set_is_intentional_disconnect(message.get("peer_id"),True)
+
     def connectionLost(self, reason):
         """Handle lost connection."""
         self.logger.info(f"Connection lost: {reason.getErrorMessage()}")
 
-        if self.remote_id:
-            peer_id = self.remote_id
-            if self.peers.get_peer_info(peer_id):
-                if self.is_initiator:
-                    self.peers.remove_peer_info(peer_id,"local")
-                else:
-                    self.peers.remove_peer_info(peer_id,"remote")
+        if not self.remote_id:
+            self.logger.debug("Remote ID is not set, cannot handle disconnection properly.")
+            return
 
+        # If we doesnt have information about the peer (Could be because we already removed him, or the peer was never added)
+        if not self.peers.get_peer_info(self.remote_id):
+            self.factory.on_peer_disconnected_event(self.remote_id)
+            return
+
+        # If it wasnt intentional
+        if not self.peers.get_is_intentional_disconnect(self.remote_id):
+            self.logger.debug("Unintentional disconnect detected, removing peer info.")
+            self.peers.remove_peer_info(self.remote_id)
+
+            # log the public peer list
+            self.log_public_peer_list(message=f"Peer {self.remote_id} left. Peer list updated")
+
+            # Broadcast the removal of the peer
+            self.factory.broadcast_remove_peer(self.remote_id)
+
+            self.factory.on_peer_disconnected_event(self.remote_id)
+            self.factory.on_peer_undiscovered_event(self.remote_id)
+        # If it was intentional, and he doesnt needs to be removed from the network
+        else:
+            if self.peers.get_peer_info(self.remote_id):
+                if self.is_initiator:
+                    self.peers.remove_peer_info(self.remote_id,"local")
+                else:
+                    self.peers.remove_peer_info(self.remote_id,"remote")
+
+            # Reset the intentional disconnect flag
+            self.peers.set_is_intentional_disconnect(self.remote_id, False)
             # Raise peer disconnected event
             self.factory.on_peer_disconnected_event(self.remote_id)
 
