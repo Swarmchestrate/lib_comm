@@ -8,6 +8,7 @@ from twisted.internet.task import deferLater
 
 from swch_com.factory import P2PFactory
 from swch_com.node import P2PNode
+from swch_com.message_types import SystemMessageType
 
 class SwchAgent():
     def __init__(
@@ -209,6 +210,9 @@ class SwchAgent():
                   
         Returns:
             None
+
+        Raises:
+            ValueError: If the message type is reserved for system messages.
             
         Example:
             def handle_chat(sender_id, message):
@@ -216,6 +220,8 @@ class SwchAgent():
             
             agent.register_message_handler('chat', handle_chat)
         """
+        if SystemMessageType.is_system_message(message_type):
+            raise ValueError(f"Cannot register handler for system message type: {message_type}")
         self.factory.user_defined_msg_handlers[message_type] = func
 
     def send(self, peer_id: str, message_type: str, payload: Dict[str, Any]) -> None:

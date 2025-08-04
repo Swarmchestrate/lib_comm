@@ -9,6 +9,7 @@ from twisted.internet.task import LoopingCall
 
 from swch_com.node import P2PNode
 from swch_com.peers import Peers
+from swch_com.message_types import SystemMessageType
 
 class P2PFactory(Factory):
     def __init__(self, peer_id: str, metadata: dict, public_ip: str, public_port: str):
@@ -136,7 +137,7 @@ class P2PFactory(Factory):
         peer_info = self.peers.get_peer_info(peer_id)
         if not peer_info:
             self.logger.error(f"No such peer {peer_id} in registry.")
-            return
+            raise ValueError(f"No such peer {peer_id} in registry.")
 
         # Find an active transport (local or remote) for that peer
         transport = None
@@ -156,7 +157,7 @@ class P2PFactory(Factory):
         """Broadcast a message to all peers to remove a disconnected peer."""
         message_id = str(uuid.uuid4())
         message = {
-            "message_type": "system_broadcast_remove_peer",
+            "message_type": SystemMessageType.BROADCAST_REMOVE_PEER.value,
             "message_id": message_id,
             "peer_id": self.id,
             "remove_peer_id": peer_id,
@@ -167,7 +168,7 @@ class P2PFactory(Factory):
         """Send a message to indicate an intentional disconnect."""
         message_id = str(uuid.uuid4())
         message = {
-            "message_type": "system_send_intentional_disconnect",
+            "message_type": SystemMessageType.SEND_INTENTIONAL_DISCONNECT.value,
             "message_id": message_id,
             "peer_id": self.id,
         }

@@ -6,6 +6,7 @@ import logging
 from typing import Optional, Dict, Any, List
 
 from swch_com.peers import Peers
+from swch_com.message_types import SystemMessageType
 
 class P2PNode(Protocol):
     def __init__(self, factory, peers: Peers, is_initiator: bool = False):
@@ -72,13 +73,13 @@ class P2PNode(Protocol):
         message_type = message.get("message_type")
 
         match message_type:
-            case "system_broadcast_peer_list_update":
+            case SystemMessageType.BROADCAST_PEER_LIST_UPDATE.value:
                 self.handle_peer_list_update(message)
-            case "system_send_welcome_info":
+            case SystemMessageType.SEND_WELCOME_INFO.value:
                 self.handle_welcome_info(message)
-            case "system_broadcast_remove_peer":
+            case SystemMessageType.BROADCAST_REMOVE_PEER.value:
                 self.handle_remove_peer(message)
-            case "system_send_intentional_disconnect":
+            case SystemMessageType.SEND_INTENTIONAL_DISCONNECT.value:
                 self.handle_intentional_disconnect(message)
             case _:
                 # Forward message if we're not the target or not broadcast
@@ -106,7 +107,7 @@ class P2PNode(Protocol):
         """Send peer info to the connected peer."""
         message_id = str(uuid.uuid4())
         message = {
-            "message_type": "system_send_welcome_info",
+            "message_type": SystemMessageType.SEND_WELCOME_INFO.value,
             "message_id": message_id,
             "peer_id": self.factory.id,
             "peer_public_info": self.peers.get_peer_info(self.factory.id)["public"],
@@ -156,7 +157,7 @@ class P2PNode(Protocol):
         message_id = str(uuid.uuid4())
         peer_public_info_list = self.factory.peers.get_known_peers_public_info()
         message = {
-            "message_type": "system_broadcast_peer_list_update",
+            "message_type": SystemMessageType.BROADCAST_PEER_LIST_UPDATE.value,
             "message_id": message_id,
             "peer_id": self.factory.id,
             "peers": peer_public_info_list
