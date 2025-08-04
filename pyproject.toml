@@ -1,9 +1,9 @@
 [tool.poetry]
 name = "swch_com"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python package for peer-to-peer communication for swarmchestrate entities"
 authors = [
-    "József Kovács <jozsef.kovacs@sztaki.hun-ren.hu>",
+    "Dr. József Kovács <jozsef.kovacs@sztaki.hun-ren.hu>",
     "Benedek Kovács <bened3k@sztaki.hu>",
 ]
 readme = "README.md"
