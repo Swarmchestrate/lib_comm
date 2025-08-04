@@ -58,13 +58,14 @@ class SwchAgent():
         # Set up rejoin mechanism
         self._setup_rejoin_mechanism()
         
+        self.logger.info(f"SwchAgent initialized with ID: {self.peer_id}, listening on {listen_ip}:{listen_port}, public IP: {public_ip}:{public_port}, metadata: {metadata}")
         self._start_server(self.factory, listen_ip, listen_port)
 
     def _setup_rejoin_mechanism(self):
         """Set up the automatic rejoin mechanism"""
         def on_all_disconnected():
             if self._rejoin_enabled and not self._rejoin_in_progress:
-                self.logger.info("All peers disconnected - starting rejoin process")
+                self.logger.debug("Recieved all_disconnected event starting rejoin process")
                 reactor.callLater(0, self._attempt_rejoin)
         
         self.factory.add_event_listener('peer:all_disconnected', on_all_disconnected)

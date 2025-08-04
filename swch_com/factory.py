@@ -34,7 +34,6 @@ class P2PFactory(Factory):
         self.peers.set_peer_metadata(self.id, metadata)
 
         self.logger = logging.getLogger(__name__)  # Initialize logger
-        self.logger.info(f"Initialized P2PFactory with id: {self.id}, metadata: {metadata}, host: {public_ip}, port: {public_port}")
 
         self.user_defined_msg_handlers=dict()
         
@@ -98,7 +97,7 @@ class P2PFactory(Factory):
         if "message_id" in message:
             self._mark_message_seen(message["message_id"])
         else:
-            self.logger.warning("Message without message_id generating id...")
+            self.logger.debug("Message without message_id generating id...")
             message_id = str(uuid.uuid4())
             message["message_id"] = message_id
             self._mark_message_seen(message_id)
@@ -108,8 +107,13 @@ class P2PFactory(Factory):
             self.logger.error("Message must have a 'message_type' field.")
             return
         if "peer_id" not in message:
-            self.logger.warning("Message must have a 'peer_id' field. Setting to factory ID.")
+            self.logger.debug("Message must have a 'peer_id' field. Setting to factory ID.")
             message["peer_id"] = self.id
+
+        if message.get("peer_id") != self.id:
+            self.logger.debug(f"Forwarding message: {message}")
+        else:
+            self.logger.debug(f"Sending message {message}")
 
         serialized_message = json.dumps(message) + "\n"
         data = serialized_message.encode("utf-8")
@@ -131,7 +135,7 @@ class P2PFactory(Factory):
         
         peer_info = self.peers.get_peer_info(peer_id)
         if not peer_info:
-            self.logger.warning(f"No such peer {peer_id} in registry.")
+            self.logger.error(f"No such peer {peer_id} in registry.")
             return
 
         # Find an active transport (local or remote) for that peer
@@ -142,10 +146,10 @@ class P2PFactory(Factory):
                 transport = info["transport"]
                 break
         if not transport:
-            self.logger.info(f"Peer {peer_id} is not currently connected. Sending to all connected peers.")
+            self.logger.debug(f"Peer {peer_id} is not currently connected. Sending to all connected peers.")
             self.send_message(message)
         else:
-            self.logger.info(f"Sending message to peer {peer_id}")
+            self.logger.debug(f"Sending message to peer {peer_id}")
             self.send_message(message, transport)
 
     def broadcast_remove_peer(self, peer_id: str):
@@ -199,7 +203,7 @@ class P2PFactory(Factory):
         
         # Check if this was the last connection and it wasn't intentional
         if self._connection_count == 0 and not self._is_shutting_down:
-            self.logger.info("All connections lost unintentionally - triggering peer:all_disconnected event")
+            self.logger.info("All connections lost unintentionally")
             for listener in self.event_listeners.get('peer:all_disconnected', []):
                 listener()
         
@@ -208,11 +212,13 @@ class P2PFactory(Factory):
 
     def on_peer_discovered_event(self, peer_id: str):
         """Trigger the peer:discovered event"""
+        self.logger.info(f"Peer discovered: {peer_id}")
         for listener in self.event_listeners.get('peer:discovered', []):
             listener(peer_id)
     
     def on_peer_undiscovered_event(self, peer_id: str):
         """Trigger the peer:undiscovered event"""
+        self.logger.info(f"Peer undiscovered: {peer_id}")
         for listener in self.event_listeners.get('peer:undiscovered', []):
             listener(peer_id)
 

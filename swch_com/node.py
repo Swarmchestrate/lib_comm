@@ -26,6 +26,11 @@ class P2PNode(Protocol):
         host_address = f"{host.host}:{host.port}"
 
         self.logger.debug(f"Connected to peer at {peer_address} from {host_address}")
+        if self.is_initiator:
+            self.logger.info(f"Made connection to a peer...")
+        else:
+            self.logger.info(f"Peer made connection to us...")
+
         self.send_welcome_info()
 
     def dataReceived(self, data: bytes):
@@ -61,7 +66,7 @@ class P2PNode(Protocol):
         if self.factory._is_message_seen(message_id):
             return  # Deduplicate messages
 
-        self.logger.info(f"Received message: {message}")
+        self.logger.debug(f"Received message: {message}")
         self.factory._mark_message_seen(message_id)
 
         message_type = message.get("message_type")
@@ -91,7 +96,8 @@ class P2PNode(Protocol):
                     func(message.get("peer_id",""), message.get("payload",""))
                 else:
                     self.logger.warning(f"Unknown message type received: {message_type}")
-                    self.logger.warning(f"Message content: {message}")
+                
+                self.logger.info(f"Recieved user-defined message: {message}")
 
                 # Emit message event
                 self.factory.emit_message(message.get("peer_id", ""), message)
@@ -122,7 +128,6 @@ class P2PNode(Protocol):
         is_new_peer = not self.peers.get_peer_info(remote_peer_id)
 
         if is_new_peer:
-            self.logger.info(f"New peer discovered: {remote_peer_id}")
             self.factory.on_peer_discovered_event(remote_peer_id)
 
             # Add new peer to the peer list
@@ -140,7 +145,6 @@ class P2PNode(Protocol):
             self.peers.set_remote_info(remote_peer_id, peer.host, peer.port, self.transport)
 
         if is_new_peer and len(self.peers.get_all_peers_items()) > 2:
-            self.logger.info(f"Broadcasting peer list update after discovering new peer {remote_peer_id}")
             # If this is a new peer, broadcast the updated peer list
             self.broadcast_peer_list_update()
 
@@ -168,7 +172,6 @@ class P2PNode(Protocol):
             old = self.peers.get_peer_info(peer_id)
 
             if not old:
-                self.logger.info(f"New peer discovered: {peer_id}")
                 self.factory.on_peer_discovered_event(peer_id)
 
                 # Add new peer to the peer list
@@ -197,14 +200,14 @@ class P2PNode(Protocol):
         """Remove a peer from all_peers."""
         peer_id = message.get("remove_peer_id")
         if peer_id:
+            # Raise peer undiscovered event
+            self.factory.on_peer_undiscovered_event(peer_id)
+
             if self.peers.remove_peer_info(peer_id):
                 self.log_public_peer_list(message=f"Peer {peer_id} left. Peer list updated")    
             else:
                 self.logger.debug(f"Peer {peer_id} not found in peer list.")
             
-        # Raise peer undiscovered event
-        self.factory.on_peer_undiscovered_event(peer_id)
-
         # Propagate the removal to other peers
         self.factory.send_message(message)
 
@@ -214,7 +217,7 @@ class P2PNode(Protocol):
 
     def connectionLost(self, reason):
         """Handle lost connection."""
-        self.logger.info(f"Connection lost: {reason.getErrorMessage()}")
+        self.logger.debug(f"Connection lost: {reason.getErrorMessage()}")
 
         if not self.remote_id:
             self.logger.debug("Remote ID is not set, cannot handle disconnection properly.")
@@ -230,14 +233,14 @@ class P2PNode(Protocol):
             self.logger.debug("Unintentional disconnect detected, removing peer info.")
             self.peers.remove_peer_info(self.remote_id)
 
-            # log the public peer list
-            self.log_public_peer_list(message=f"Peer {self.remote_id} left. Peer list updated")
-
+            self.factory.on_peer_disconnected_event(self.remote_id)
+            self.factory.on_peer_undiscovered_event(self.remote_id)
+            
             # Broadcast the removal of the peer
             self.factory.broadcast_remove_peer(self.remote_id)
 
-            self.factory.on_peer_disconnected_event(self.remote_id)
-            self.factory.on_peer_undiscovered_event(self.remote_id)
+            # log the public peer list
+            self.log_public_peer_list(message=f"Peer {self.remote_id} left. Peer list updated")
         # If it was intentional, and he doesnt needs to be removed from the network
         else:
             if self.peers.get_peer_info(self.remote_id):
