@@ -544,7 +544,7 @@ class SwchAgent():
             else:
                 print("Could not disconnect from peer")
         """
-        self._disconnect(peer_id)
+        return self._disconnect(peer_id)
 
     def leave(self) -> defer.Deferred:
         """Gracefully leave the peer network and shutdown the agent.
