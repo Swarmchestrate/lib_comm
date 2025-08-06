@@ -12,7 +12,7 @@ from swch_com.peers import Peers
 from swch_com.message_types import SystemMessageType
 
 class P2PFactory(Factory):
-    def __init__(self, peer_id: str, metadata: dict, public_ip: str, public_port: str):
+    def __init__(self, peer_id: str, metadata: dict, public_ip: Optional[str] = None, public_port: Optional[str] = None):
         """
         Initialize the P2P factory with peer information and metadata.
         :param peer_id: Unique identifier for this peer

@@ -14,8 +14,8 @@ class SwchAgent():
     def __init__(
         self, 
         peer_id: Optional[str], 
-        listen_ip: str, 
-        listen_port: int, 
+        listen_ip: Optional[str] = None, 
+        listen_port: Optional[int] = None, 
         public_ip: Optional[str] = None, 
         public_port: Optional[int] = None, 
         metadata: Optional[Dict[str, Any]] = None, 
@@ -37,18 +37,21 @@ class SwchAgent():
         if not peer_id:
             peer_id = str(uuid.uuid4())
 
-        if not public_ip or not public_port:
-            public_ip = listen_ip
-            public_port = listen_port
+        args = ()
+        if listen_ip and listen_port:
+            args = (listen_ip, listen_port)
+        elif public_ip and public_port:
+            args = (public_ip, public_port)
+
+        self.factory = P2PFactory(peer_id, metadata, *args)
 
         if metadata is None:
             metadata = {}
 
         self.peer_id = peer_id
-        self.public_ip = public_ip
-        self.public_port = public_port
+        self.public_ip = public_ip or listen_ip
+        self.public_port = public_port or listen_port
         self.metadata = metadata
-        self.factory = P2PFactory(peer_id, metadata, public_ip, public_port)
         
         # Rejoin mechanism settings
         self._rejoin_enabled = enable_rejoin
@@ -60,7 +63,10 @@ class SwchAgent():
         self._setup_rejoin_mechanism()
         
         self.logger.info(f"SwchAgent initialized with ID: {self.peer_id}, listening on {listen_ip}:{listen_port}, public IP: {public_ip}:{public_port}, metadata: {metadata}")
-        self._start_server(self.factory, listen_ip, listen_port)
+
+        if args:
+            # Start server if listen_ip and listen_port are provided
+            self._start_server(self.factory, listen_ip, listen_port)
 
     def _setup_rejoin_mechanism(self):
         """Set up the automatic rejoin mechanism"""
@@ -573,7 +579,7 @@ class SwchAgent():
         
         # Mark as shutting down to prevent triggering all_disconnected event
         self.factory.set_shutting_down(True)
-        
+
         # Send system remove peer message to all peers
         self.factory.broadcast_remove_peer(self.peer_id)
 
