@@ -54,6 +54,7 @@ class SwchAgent():
         self.metadata = metadata
         
         # Rejoin mechanism settings
+        self._original_rejoin_setting = enable_rejoin
         self._rejoin_enabled = enable_rejoin
         self._rejoin_in_progress = False
         self._max_rejoin_attempts = 10
@@ -574,8 +575,10 @@ class SwchAgent():
         """
         self.logger.info("Shutting down SwchAgent...")
         
-        # Disable rejoin mechanism during shutdown
-        self.disable_rejoin()
+        # Check if user enabled rejoin mechanism
+        if self._original_rejoin_setting:
+            # Disable rejoin mechanism during shutdown
+            self.disable_rejoin()
         
         # Mark as shutting down to prevent triggering all_disconnected event
         self.factory.set_shutting_down(True)
@@ -619,8 +622,10 @@ class SwchAgent():
         # Reset shutdown state for potential reuse
         self.factory.set_shutting_down(False)
         
-        # Re-enable rejoin mechanism for potential reuse
-        self.enable_rejoin()
+        # Check if user enabled rejoin mechanism
+        if self._original_rejoin_setting:
+            # Re-enable rejoin mechanism for potential reuse
+            self.enable_rejoin()
         
         self.logger.info("SwchAgent shutdown complete")
 
