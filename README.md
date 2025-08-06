@@ -12,7 +12,6 @@
 ## Features
 
 - **Lightweight and Flexible**: Minimal configuration required to start a server or join a network.
-- **Easy to Use**: Simple CLI for quick setup.
 - **Poetry Integration**: Dependency management and virtual environment handled seamlessly.
 
 ---
@@ -88,65 +87,6 @@ Poetry version 1.x.x
    ```bash
    poetry add <package-name>
    ```
-
----
-
-## Example Usage
-
-The package provides example scripts to demonstrate peer-to-peer communication:
-- `example_ra.py` - Resource Agent (RA) implementation
-- `example_cli.py` - Client implementation 
-
-### Starting Resource Agents
-
-Use the provided `launch_RAs.sh` script to start multiple Resource Agents:
-
-```bash
-./launch_RAs.sh
-```
-
-This script will:
-- Start 2 Resource Agents by default
-- First RA listens on port 5000
-- Second RA connects to the first one and listens on port 5001
-
-#### Manual RA Launch
-
-To manually start a Resource Agent:
-
-```bash
-# First RA
-poetry run python3 example_ra.py --listen 127.0.0.1:5000 --public 127.0.0.1:5000
-
-# Additional RA joining the network
-poetry run python3 example_ra.py --listen 127.0.0.1:5001 --public 127.0.0.1:5001 --join 127.0.0.1:5000
-```
-
-Options for `example_ra.py`:
-- `--listen <ip:port>`: Local address to listen on
-- `--public <ip:port>`: Public address for other peers to connect to
-- `--join <ip:port>`: (Optional) Address of existing RA to join
-
-### Starting a Client
-
-Use the provided `launch_client.sh` script to start a client that connects to an RA:
-
-```bash
-./launch_client.sh
-```
-
-This connects to the RA running on port 5000 by default.
-
-#### Manual Client Launch
-
-To manually start a client:
-
-```bash
-poetry run python3 example_cli.py --join 127.0.0.1:5000
-```
-
-Options for `example_cli.py`:
-- `--join <ip:port>`: Address of RA to connect to
 
 ---
 
