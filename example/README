@@ -1,0 +1,16 @@
+This example demonstrates the following:
+
+1. Launches 3 RAs, interconnected with two links, waiting for incoming messages such as submit and getstate.
+2. Launches 1 client, it joins the first RA, sends a submit message, then performs a graceful exit.
+3. Launches 1 SA with metadata "appid=Swarm1", it joins the last RA, waiting for incoming messages such as getstate.
+4. Launches 1 client, it joins the first RA, searches for an SA with metadata "appid=Swarm1", sends a getstate message, prints the answer and performs a graceful exit.
+
+In order to play the demo, please open up 3 shell command window and go to directory with the example files.
+Step1: execute "./1_launch_3_RAs.sh" in first shell 
+Step2: execute "./2_client_submit.sh" in second shell 
+Step3: execute "./3_launch_1_SA.sh" in third shell
+Step4: execute "./4_client_getstate.sh" in second shell
+
+Enjoy the demo and investigating its operation!
+
+Jozsef Kovacs
