@@ -39,6 +39,8 @@ class P2PFactory(Factory):
         self.user_defined_msg_handlers=dict()
         
         self.event_listeners = {
+            'entered': [],
+            'left': [],
             'peer:connected': [],
             'peer:disconnected': [],
             'peer:discovered': [],
@@ -190,6 +192,18 @@ class P2PFactory(Factory):
         """Set the shutdown state to distinguish intentional vs unintentional disconnections"""
         self._is_shutting_down = shutting_down
 
+    def on_entered_event(self):
+        """Trigger the entered event"""
+        self.logger.info(f"Successfully entered the network.")
+        for listener in self.event_listeners.get('entered', []):
+            listener()
+
+    def on_left_event(self):
+        """Trigger the left event"""
+        self.logger.info(f"Left the network.")
+        for listener in self.event_listeners.get('left', []):
+            listener()
+
     def on_peer_connected_event(self, peer_id: str):
         """Trigger the peer:connected event"""
         self._increment_connection_count()
@@ -203,8 +217,8 @@ class P2PFactory(Factory):
         self.logger.info(f"Connection lost with {peer_id}. Connection count: {self._connection_count}")
         
         # Check if this was the last connection and it wasn't intentional
-        if self._connection_count == 0 and not self._is_shutting_down:
-            self.logger.info("All connections lost unintentionally")
+        if self._connection_count == 0:
+            self.logger.info("Disconnected from all peers.")
             for listener in self.event_listeners.get('peer:all_disconnected', []):
                 listener()
         

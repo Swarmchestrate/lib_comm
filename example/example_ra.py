@@ -75,48 +75,5 @@ if __name__ == "__main__":
 
         com.enter(join_ip,join_port)
 
-    """
-    def handle_ping(sender_id, message):
-        message_id = str(uuid.uuid4())
-        logging.info(f"Received ping from {sender_id}")
-        message=  {
-            "message_type": "pong",
-            "message_id": message_id,
-            "peer_id": peer_id,
-            "message_body": f"Pong from {peer_id}"
-        }
-        com.send_message(sender_id, message)
-    
-    def handle_pong(sender_id, message):
-        logging.info(f"Received pong from {sender_id}")
-
-    com.register_message_handler("pong", handle_pong)
-    com.register_message_handler("ping", handle_ping)
-    
-    def send_ping():
-        message_id = str(uuid.uuid4())
-        message = {
-            "message_type": "ping",
-            "message_id": message_id,
-            "peer_id": peer_id,
-            "message_body": f"Ping from {peer_id}"
-        }
-        com.send_message(None,message)
-
-    heartbeat_task = LoopingCall(send_ping)
-    heartbeat_task.start(2)
-    """
     com.start()
 
-    """
-    def client_submit(clientid, message):
-        import uuid
-        logging.info(f"Client submit arrived: peer: {clientid}, message: {message}")
-        message = {
-            "message_type": "ack_client_submit",
-            "message_id": str(uuid.uuid4())
-        }
-        com.send_message(clientid, message)
-        return
-    com.register_message_handler("user_client_submit", client_submit)
-    """

@@ -9,12 +9,13 @@ from swch_com.peers import Peers
 from swch_com.message_types import SystemMessageType
 
 class P2PNode(Protocol):
-    def __init__(self, factory, peers: Peers, is_initiator: bool = False):
+    def __init__(self, factory, peers: Peers, is_initiator: bool = False, is_entering: bool = False):
         self.factory = factory
         self.peers = peers
 
         self.buffer = ""  # Buffer to hold partial messages
         self.is_initiator = is_initiator  # Track if this node initiated the connection
+        self.is_entering = is_entering # Track if this node is created for entering the network
         self.remote_id: Optional[str] = None  # ID of the remote peer
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
@@ -91,6 +92,8 @@ class P2PNode(Protocol):
                 if target_id == "*":
                     self.factory.send_message(message)
 
+                self.logger.info(f"Recieved user-defined message: {message}")
+                
                 # Handle message since it must be a broadcast or targeted user-defined message
                 if message_type in self.factory.user_defined_msg_handlers:
                     func = self.factory.user_defined_msg_handlers[message_type]
@@ -98,7 +101,6 @@ class P2PNode(Protocol):
                 else:
                     self.logger.warning(f"Unknown message type received: {message_type}")
                 
-                self.logger.info(f"Recieved user-defined message: {message}")
 
                 # Emit message event
                 self.factory.emit_message(message.get("peer_id", ""), message)
@@ -106,12 +108,14 @@ class P2PNode(Protocol):
     def send_welcome_info(self):
         """Send peer info to the connected peer."""
         message_id = str(uuid.uuid4())
+        peer_public_info_list = self.factory.peers.get_known_peers_public_info()
         message = {
             "message_type": SystemMessageType.SEND_WELCOME_INFO.value,
             "message_id": message_id,
             "peer_id": self.factory.id,
             "peer_public_info": self.peers.get_peer_info(self.factory.id)["public"],
             "peer_metadata": self.peers.get_peer_metadata(self.factory.id),
+            "peers": peer_public_info_list
         }
         self.factory.send_message(message, peer_transport=self.transport)
 
@@ -133,17 +137,15 @@ class P2PNode(Protocol):
             self.peers.add_peer(remote_peer_id)
             self.peers.set_public_info(remote_peer_id, message["peer_public_info"]["host"], message["peer_public_info"]["port"])
             self.peers.set_peer_metadata(remote_peer_id, message.get("peer_metadata", {}))
-
-            # Log the public peer list
-            self.log_public_peer_list(message=f"Peer {remote_peer_id} entered. Updated peer list") 
             
+        # Set the transport information for the peer
         peer = self.transport.getPeer()
         if self.is_initiator:
             self.peers.set_local_info(remote_peer_id, peer.host, peer.port, self.transport)
         else:
             self.peers.set_remote_info(remote_peer_id, peer.host, peer.port, self.transport)
 
-        # Raise events
+        # Raise peer discovered and connected events
         if is_new_peer:
             self.factory.on_peer_discovered_event(remote_peer_id)
         self.factory.on_peer_connected_event(remote_peer_id)
@@ -152,6 +154,26 @@ class P2PNode(Protocol):
         if is_new_peer and len(self.peers.get_all_peers_items()) > 2:
             # If this is a new peer, broadcast the updated peer list
             self.broadcast_peer_list_update()
+
+        # Process the peers list from the welcome message
+        for peer_id, public_info, metadata in message.get("peers", []):
+            if not self.peers.get_peer_info(peer_id):
+                # Add new peer to the peer list
+                self.peers.add_peer(peer_id)
+                self.peers.set_public_info(peer_id, public_info["host"], public_info["port"])
+                self.peers.set_peer_metadata(peer_id, metadata)
+
+                # Raise peer discovered event
+                self.factory.on_peer_discovered_event(peer_id)
+
+        if (not self.is_entering) and is_new_peer:
+            # Log the public peer list
+            self.log_public_peer_list(message=f"Peer {remote_peer_id} entered. Updated peer list")
+
+        if self.is_entering:
+            self.log_public_peer_list(message=f"Recieved peers after entering. Current peers")
+            self.factory.on_entered_event()
+            self.is_entering = False  # Reset entering state
 
     def broadcast_peer_list_update(self):
         """Broadcast the known peer list to all connected peers."""

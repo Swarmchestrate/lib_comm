@@ -101,8 +101,8 @@ from swch_com.swchagent import SwchAgent
 
 agent = SwchAgent(
     peer_id="my-peer-id",           # Optional: Auto-generated if None
-    listen_ip="127.0.0.1",          # IP to listen on
-    listen_port=8080,               # Port to listen on
+    listen_ip="127.0.0.1",          # Optional: IP to listen on
+    listen_port=8080,               # Optional: Port to listen on
     public_ip="192.168.1.100",      # Optional: Advertised IP (defaults to listen_ip)
     public_port=8080,               # Optional: Advertised port (defaults to listen_port)
     metadata={"type": "worker"},    # Optional: Peer metadata
@@ -120,7 +120,7 @@ Join an existing peer network by connecting to a known peer.
 ```python
 # Returns a Deferred for asynchronous handling
 deferred = agent.enter("192.168.1.100", 8080)
-deferred.addCallback(lambda protocol: print("Successfully joined network"))
+deferred.addCallback(lambda _: print("Successfully joined network"))
 deferred.addErrback(lambda failure: print(f"Failed to join: {failure.getErrorMessage()}"))
 ```
 
@@ -200,6 +200,8 @@ agent.on("peer:connected", lambda peer_id: print(f"Peer {peer_id} connected")) \
 
 #### Available Events
 
+- `entered` - When the agent successfully enters the network
+- `left` - When the agent successfully left the network
 - `peer:connected` - When a peer establishes a direct connection
 - `peer:disconnected` - When a peer disconnects
 - `peer:all_disconnected` - When all peers disconnect (triggers rejoin if enabled)

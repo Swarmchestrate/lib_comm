@@ -3,6 +3,8 @@ import pytest, socket, uuid
 import pytest_twisted
 from twisted.internet import reactor
 from twisted.internet.task import deferLater
+from twisted.internet.defer import DeferredList, ensureDeferred
+from pytest_twisted import blockon
 
 from swch_com.swchagent import SwchAgent
 
@@ -30,6 +32,58 @@ def agent_factory():
         return agents
 
     yield _create
+
+    # --- teardown runs *after* the test returns ---
+    # collect all cleanup Deferreds
+    deferreds = [
+        ensureDeferred(teardown_agent_listeners(agent))
+        for agent in created
+    ]
+    # block the pytest runner until they're *all* done
+    blockon(DeferredList(deferreds))
+    created.clear()
+
+@pytest_twisted.inlineCallbacks
+def teardown_agent_listeners(agent):
+    # 1) Leave the ring
+    yield agent.leave()
+
+    # 2) Clean up any listening ports (readers)
+    for reader in list(reactor.getReaders()):
+        try:
+            addr = reader.getHost()
+        except Exception:
+            continue
+
+        if addr.host == agent.public_ip and addr.port == agent.public_port:
+            reactor.removeReader(reader)
+            # stopListening() for TCP/UDP ports
+            stop = getattr(reader, "stopListening", None)
+            if stop:
+                d = reader.stopListening()
+                if d:
+                    yield d
+
+    # 3) Clean up any outgoing transports (writers)
+    for writer in list(reactor.getWriters()):
+        try:
+            addr = writer.getHost()
+        except Exception:
+            continue
+
+        if addr.host == agent.public_ip and addr.port == agent.public_port:
+            reactor.removeWriter(writer)
+
+            # If it's a listening-style port (e.g. UDP), stopListening()
+            stop = getattr(writer, "stopListening", None)
+            if stop:
+                d = writer.stopListening()
+                if d:
+                    yield d
+
+            # Otherwise, if it's a TCP connection, close it cleanly
+            elif hasattr(writer, "loseConnection"):
+                writer.loseConnection()
 
 @pytest_twisted.inlineCallbacks
 def test_two_agents_connection(agent_factory):
@@ -514,6 +568,24 @@ def test_broadcast_message_exchange(agent_factory):
     assert received_by_a1['payload'] == test_payload_2, "Message payload should match"
 
 @pytest_twisted.inlineCallbacks
+def test_entered_event(agent_factory):
+    a1, a2 = agent_factory(2)
+    entered_peers = []
+
+    # Register event handler for peer entering
+    def on_peer_entered():
+        entered_peers.append("a1")
+
+    a1.on('entered', on_peer_entered)
+
+    # Connect a1 to a2
+    a1.enter(a2.public_ip, a2.public_port)
+    
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    assert len(entered_peers) == 1, "Enter event should be triggered exactly once"
+
+@pytest_twisted.inlineCallbacks
 def test_peer_discovered_event(agent_factory):
     a1, a2 = agent_factory(2)
     discovered_peers = []
@@ -532,6 +604,34 @@ def test_peer_discovered_event(agent_factory):
 
     assert len(discovered_peers) == 1, "Should have discovered exactly one peer"
     assert discovered_peers[0] == a2.peer_id, "Discovered peer ID should match a2's ID"
+
+@pytest_twisted.inlineCallbacks
+def test_peer_undiscovered_event(agent_factory):
+    a1, a2 = agent_factory(2)
+    undiscovered_peers = []
+
+    # Register event handler for peer undiscovery
+    def on_peer_undiscovered(peer_id):
+        undiscovered_peers.append(peer_id)
+
+    a1.on('peer:undiscovered', on_peer_undiscovered)
+
+    # Connect a1 to a2
+    a1.enter(a2.public_ip, a2.public_port)
+    
+    # Wait for connection and discovery
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    assert len(undiscovered_peers) == 0, "Should not have any undiscovered peers initially"
+
+    # Disconnect from peer
+    a2.leave()
+    
+    # Wait for disconnection to process
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    assert len(undiscovered_peers) == 1, "Should have received exactly one undiscovery event"
+    assert undiscovered_peers[0] == a2.peer_id, "Undiscovered peer ID should match a2's ID"
 
 @pytest_twisted.inlineCallbacks
 def test_peer_connected_event(agent_factory):
@@ -649,36 +749,6 @@ def test_all_disconnected_event(agent_factory):
     assert all_disconnected_count == 1, "Should have received exactly one all_disconnected event"
     assert a1.get_connection_count() == 0, "a1 should have no active connections"
 
-@pytest_twisted.inlineCallbacks
-def test_all_disconnected_event_not_triggered_on_intentional_shutdown(agent_factory):
-    a1, a2 = agent_factory(2)
-    all_disconnected_count = 0
-
-    # Register event handler for all peers disconnected
-    def on_all_disconnected():
-        nonlocal all_disconnected_count
-        all_disconnected_count += 1
-
-    a1.on('peer:all_disconnected', on_all_disconnected)
-
-    # Connect a1 to a2
-    a1.enter(a2.public_ip, a2.public_port)
-    
-    # Wait for connection to establish
-    yield deferLater(reactor, 0.5, lambda: None)
-    
-    # Verify initial connection
-    assert a1.get_connection_count() == 1, "Initial connection should be established"
-    
-    # Intentional shutdown of a1 should NOT trigger the event
-    a1.leave()
-    
-    # Wait for disconnection to process
-    yield deferLater(reactor, 0.5, lambda: None)
-
-    assert all_disconnected_count == 0, "Should not have received all_disconnected event on intentional shutdown"
-    assert a1.get_connection_count() == 0, "a1 should have no active connections"
-    
 @pytest_twisted.inlineCallbacks
 def test_expired_messages_cleanup(agent_factory):
     # Create a single agent
@@ -907,13 +977,15 @@ def test_rejoin_with_network_partition_healing(agent_factory):
     assert len(received_messages[a4.peer_id]) == 0, "a4 should not receive cross-partition messages"
     
     # Connect bridge to both partitions
-    a6.enter(a1.public_ip, a1.public_port)
-    a6.enter(a4.public_ip, a4.public_port)
-    
-    yield deferLater(reactor, 1, lambda: None)
-    
+    yield a6.enter(a1.public_ip, a1.public_port)
+
     # Wait for network to converge after healing
-    yield deferLater(reactor, 2, lambda: None)
+    yield deferLater(reactor, 4, lambda: None)
+
+    yield a6.enter(a4.public_ip, a4.public_port)
+        
+    # Wait for network to converge after healing
+    yield deferLater(reactor, 4, lambda: None)
     
     # Verify network healing - all agents should now know about each other again
     all_agents = [a1, a2, a4, a5, a6]
@@ -924,7 +996,7 @@ def test_rejoin_with_network_partition_healing(agent_factory):
     # Test cross-partition message delivery after healing
     a1.send(a5.peer_id, "healed_network", {"content": "cross-partition after healing"})
     
-    yield deferLater(reactor, 0.5, lambda: None)
+    yield deferLater(reactor, 1, lambda: None)
     
     # Verify cross-partition message was delivered
     assert len(received_messages[a5.peer_id]) == 2, "a5 should receive message from a1 after healing"

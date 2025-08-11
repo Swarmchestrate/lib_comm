@@ -32,27 +32,17 @@ if __name__ == "__main__":
                     enable_rejoin=False,
                     metadata={"peer_type":"CL"})
 
-    if args.join:
-        try:
-            RAhost, RAport = args.join.split(':')
-            RAport = int(RAport)
-        except ValueError:
-            logging.error("Invalid format for --join. Expected format is ip:port")
-            sys.exit(1)
-
-        com.enter(RAhost, RAport)
-
     submit_target_RA_id="wmin.ac.uk"
     submit_happened=False
     getstate_happened=False
 
-    def on_peer_discovered(peer_id):
+    def on_entered():
         if args.submit:
             global submit_target_RA_id, submit_happened
-            if submit_happened or peer_id != submit_target_RA_id:
+            if submit_happened:
                 return
             logging.info(f"Submitting application: {args.submit}")
-            com.send(peer_id, "MSG_SUBMIT", {"appid": args.submit})
+            com.send(submit_target_RA_id, "MSG_SUBMIT", {"appid": args.submit})
             submit_happened = True
             com.leave().addCallback(lambda _: com.stop())
 
@@ -74,7 +64,20 @@ if __name__ == "__main__":
         com.leave().addCallback(lambda _: com.stop())
 
     com.register_message_handler("MSG_STATE",on_state)
-    com.on('peer:discovered', on_peer_discovered)
+
+    if args.join:
+        try:
+            RAhost, RAport = args.join.split(':')
+            RAport = int(RAport)
+        except ValueError:
+            logging.error("Invalid format for --join. Expected format is ip:port")
+            sys.exit(1)
+
+        def on_connection_failed(failure):
+            logging.error(f"Failed to join network: {failure.getErrorMessage()}")
+            com.stop()
+
+        com.enter(RAhost, RAport).addCallback(lambda _:on_entered()).addErrback(on_connection_failed)
 
     com.start()
 

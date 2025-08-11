@@ -40,6 +40,12 @@ if __name__ == "__main__":
                     listen_ip, listen_port,
                     metadata={"peer_type":"SA","appid":args.appid})
 
+    def on_getstate(peer_id, message):
+        logging.info(f"Sending state for application: {message['appid']}")
+        com.send(peer_id, "MSG_STATE", {"appid": message['appid'], "state": "running"})
+
+    com.register_message_handler("MSG_GETSTATE",on_getstate)
+
     if args.join:
         try:
             RAhost, RAport = args.join.split(':')
@@ -49,11 +55,5 @@ if __name__ == "__main__":
             sys.exit(1)
 
         com.enter(RAhost, RAport)
-
-    def on_getstate(peer_id, message):
-        logging.info(f"Sending state for application: {message['appid']}")
-        com.send(peer_id, "MSG_STATE", {"appid": message['appid'], "state": "running"})
-
-    com.register_message_handler("MSG_GETSTATE",on_getstate)
 
     com.start()

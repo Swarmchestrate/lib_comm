@@ -68,8 +68,6 @@ def test_swch_agent_integration():
     p4_port = get_free_port()
     p4 = SwchAgent(
         peer_id=str(uuid.uuid4()),
-        listen_ip="127.0.0.1",
-        listen_port=p4_port,
         metadata={"type": "CL"}
     )
     yield p4.enter("127.0.0.1", p1_port)
@@ -90,8 +88,7 @@ def test_swch_agent_integration():
     # P4 handler for MSG_ACKSUBMIT
     def p4_handle_msg_acksubmit(sender_id, message):
         # Step 7a: P4 leaves the network
-        d = p4.leave()
-        d.addCallback(lambda _: setattr(test_state, 'p4_left_first_time', True))
+        p4.leave().addCallback(lambda _: setattr(test_state, 'p4_left_first_time', True))
     
     p4.register_message_handler("MSG_ACKSUBMIT", p4_handle_msg_acksubmit)
     
@@ -115,8 +112,7 @@ def test_swch_agent_integration():
     def p1_handle_msg_offer(sender_id, message):
         if message.get("payload") != "none":
             # Step 10a: P1 builds direct connection to P3
-            p1.connect(sender_id)
-            p1.on('peer:connected', lambda peer_id: setattr(test_state, 'p1_connected_to_p3', True))
+            p1.connect(sender_id).addCallback(lambda peer_id: setattr(test_state, 'p1_connected_to_p3', True))
             # Step 10b: P1 sends MSG_NEWSWARM to P3
             p1.send(sender_id, "MSG_NEWSWARM", {"payload": "app1"})
 
@@ -134,8 +130,7 @@ def test_swch_agent_integration():
                 listen_port=p5_port,
                 metadata={"type": "SA", "appid": "app1"}
             )
-            d = p5.enter("127.0.0.1", p3_port)
-            d.addCallback(lambda _: setattr(test_state, 'p5_started', True))
+            p5.enter("127.0.0.1", p3_port).addCallback(lambda _: setattr(test_state, 'p5_started', True))
     
     p3.register_message_handler("MSG_NEWSWARM", p3_handle_msg_newswarm)
     
@@ -165,8 +160,7 @@ def test_swch_agent_integration():
         listen_port=p4_second_port,
         metadata={"type": "CL"}
     )
-    d = p4_second.enter("127.0.0.1", p1_port)
-    d.addCallback(lambda _: setattr(test_state, 'p4_second_started', True))
+    p4_second.enter("127.0.0.1", p1_port).addCallback(lambda _: setattr(test_state, 'p4_second_started', True))
     yield deferLater(reactor, 2.0, lambda: None)  # Allow peer discovery
     
     # Step 13: P4 searches for peers with metadata appid="app1"

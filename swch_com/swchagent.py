@@ -328,6 +328,8 @@ class SwchAgent():
         
         Args:
             event_name: The name of the event to listen for. Event names include:
+                       - 'entered': When the agent successfully enters the network
+                       - 'left': When the agent leaves the network
                        - 'peer:connected': When a new peer connects us
                        - 'peer:disconnected': When a peer disconnects from us
                        - 'peer:all_disconnected': When all peers disconnect from us (also used for rejoin mechanisn)
@@ -374,37 +376,97 @@ class SwchAgent():
                 connected_peers.append(peer_id)
         return connected_peers
 
-    def _connect(self, ip: str, port: int) -> defer.Deferred:
-        """Connect to a specific peer at the given IP and port with proper error handling."""
+    def _connect(self, ip: str, port: int, is_entering: bool = False) -> defer.Deferred:
+        """Connect to a specific peer at the given IP and port, and fire when
+        either 'peer:connected' or 'entered' fires (based on is_entering)."""
+        # 1) Validate parameters immediately
         if not ip or not isinstance(port, int) or port <= 0:
-            error_msg = f"Invalid connection parameters: ip='{ip}', port={port}"
-            self.logger.error(error_msg)
-            return defer.fail(ValueError(error_msg))
-        
+            msg = f"Invalid connection parameters: ip='{ip}', port={port}"
+            self.logger.error(msg)
+            return defer.fail(ValueError(msg))
+
         self.logger.info(f"Attempting to connect to peer at {ip}:{port}")
-        
+
+        # 2) Create our own deferred that we'll fire when the right event arrives
+        result_d = defer.Deferred()
+        event_listener_added = [False]  # Track if listener was added
+
+        # 3) Choose which event to listen for
+        event_name = "entered" if is_entering else "peer:connected"
+
+        # 4) Define a one-time listener that will callback our deferred
+        def _on_success(*args):
+            if event_listener_added[0]:
+                self.factory.remove_event_listener(event_name, _on_success)
+                event_listener_added[0] = False
+            if not result_d.called:
+                if is_entering:
+                    # If entering, we return None as per the original spec
+                    result_d.callback(None)
+                else:
+                    # args[0] should be the peer_id in this case
+                    if args and len(args) > 0:
+                        result_d.callback(args[0])  # Return peer_id instead of None
+
+        # 5) Wire up failure from the low-level connect
+        def _on_lowlevel_failure(failure):
+            # Clean up the event listener in case of early failure
+            if event_listener_added[0]:
+                self.factory.remove_event_listener(event_name, _on_success)
+                event_listener_added[0] = False
+            msg = f"Failed low-level connect to {ip}:{port}: {failure.getErrorMessage()}"
+            self.logger.error(msg)
+            if not result_d.called:
+                result_d.errback(failure)
+
+        # 6) Add timeout protection
+        def _on_timeout():
+            if event_listener_added[0]:
+                self.factory.remove_event_listener(event_name, _on_success)
+                event_listener_added[0] = False
+            if not result_d.called:
+                timeout_error = TimeoutError(f"Connection to {ip}:{port} timed out waiting for {event_name} event")
+                self.logger.error(str(timeout_error))
+                result_d.errback(timeout_error)
+
+        # 7) Kick off the actual TCP connect
         try:
             endpoint = TCP4ClientEndpoint(reactor, ip, port)
-            protocol = P2PNode(self.factory, self.factory.peers, is_initiator=True)
-            d = connectProtocol(endpoint, protocol)
-
-            def on_connect_success(protocol_instance):
-                self.logger.info(f"Successfully connected to peer at {ip}:{port} as initiator")
-                return protocol_instance
-
-            def on_connect_failure(failure):
-                error_msg = f"Failed to connect to {ip}:{port}: {failure.getErrorMessage()}"
-                self.logger.error(error_msg)
-                return failure
-
-            d.addCallback(on_connect_success)
-            d.addErrback(on_connect_failure)
-            return d
+            proto = P2PNode(
+                self.factory,
+                self.factory.peers,
+                is_initiator=True,
+                is_entering=is_entering
+            )
+            
+            # Register our listener BEFORE starting the connection
+            self.factory.add_event_listener(event_name, _on_success)
+            event_listener_added[0] = True
+            
+            # Set up a timeout (30 seconds)
+            timeout_call = reactor.callLater(30.0, _on_timeout)
+            
+            def cleanup_timeout(result):
+                if timeout_call.active():
+                    timeout_call.cancel()
+                return result
+            
+            result_d.addBoth(cleanup_timeout)
+            
+            d = connectProtocol(endpoint, proto)
+            d.addErrback(_on_lowlevel_failure)
             
         except Exception as e:
-            error_msg = f"Exception while attempting connection to {ip}:{port}: {str(e)}"
-            self.logger.error(error_msg)
+            # If constructing endpoint / protocol blows up, clean up and errback
+            if event_listener_added[0]:
+                self.factory.remove_event_listener(event_name, _on_success)
+                event_listener_added[0] = False
+            msg = f"Exception while attempting connection to {ip}:{port}: {e!s}"
+            self.logger.error(msg)
             return defer.fail(e)
+
+        # 8) Return the deferred that will fire on our chosen event
+        return result_d
 
     def enter(self, ip: str, port: int) -> defer.Deferred:
         """Join a peer network by connecting to a specific peer address.
@@ -417,19 +479,19 @@ class SwchAgent():
             ip: The IP address of the peer to connect to. Must be a valid IPv4 address
                 or hostname that can be resolved.
             port: The port number of the peer to connect to. Must be a valid port number
-                  (1-65535) where the target peer is listening for connections.
-                  
+                (1-65535) where the target peer is listening for connections.
+                
         Returns:
-            A Deferred that fires when the connection attempt completes:
-            - On success: fires with the protocol instance
-            - On failure: fires with the error that occurred
+            A Deferred that fires when the network entry is complete:
+            - On success: fires with None
+            - On failure: fires with the error that occurred (ConnectionError, TimeoutError, etc.)
             
         Example:
             d = agent.enter('192.168.1.100', 8080)
-            d.addCallback(lambda protocol: print("Successfully joined network"))
+            d.addCallback(lambda _: print(f"Successfully joined network"))
             d.addErrback(lambda failure: print(f"Failed to join: {failure.getErrorMessage()}"))
         """
-        return self._connect(ip, port)
+        return self._connect(ip, port, is_entering=True)
 
     def connect(self, peer_id: str) -> defer.Deferred:
         """Connect to a known peer using their peer ID.
@@ -446,16 +508,16 @@ class SwchAgent():
                     
         Returns:
             A Deferred that fires when the connection attempt completes:
-            - On success: fires with the protocol instance
+            - On success: fires with the peer ID of the connected peer
             - On failure: fires with a ValueError for invalid parameters or connection errors
             
         Raises:
             ValueError: If peer_id is empty, refers to self, peer not found, already connected,
-                       or peer lacks public connection information.
-                       
+                    or peer lacks public connection information.
+                    
         Example:
             d = agent.connect('peer-uuid-123')
-            d.addCallback(lambda protocol: print(f"Connected to peer {peer_id}"))
+            d.addCallback(lambda connected_peer_id: print(f"Connected to peer {connected_peer_id}"))
             d.addErrback(lambda failure: print(f"Connection failed: {failure.getErrorMessage()}"))
         """
         if not peer_id:
@@ -573,7 +635,7 @@ class SwchAgent():
             d = agent.leave()
             d.addCallback(lambda _: print("Successfully left the network"))
         """
-        self.logger.info("Shutting down SwchAgent...")
+        self.logger.info("Shutting down...")
         
         # Check if user enabled rejoin mechanism
         if self._original_rejoin_setting:
@@ -596,18 +658,18 @@ class SwchAgent():
         
         # Create a deferred that will fire when all disconnections are complete
         shutdown_deferred = defer.Deferred()
-        remaining_disconnections = [len(connected_peers)]  # Use list for mutable reference
         
-        def on_disconnection_complete(peer_id):
-            remaining_disconnections[0] -= 1
-            self.logger.debug(f"Disconnection complete. Remaining: {remaining_disconnections[0]}")
-            if remaining_disconnections[0] == 0:
-                self._complete_shutdown()
-                shutdown_deferred.callback(None)
-        
-        # Register temporary listener for disconnections during shutdown
-        self.factory.add_event_listener('peer:disconnected', on_disconnection_complete)
-        
+        def on_left_network():
+            """Callback for when the agent has left the network"""
+            # Clean up listener
+            self.factory.remove_event_listener('peer:all_disconnected', on_left_network)
+            # Complete shutdown
+            self._complete_shutdown()
+            self.factory.on_left_event()
+            shutdown_deferred.callback(None)
+
+        self.factory.add_event_listener('peer:all_disconnected', on_left_network)
+
         # Disconnect from all connected peers
         for peer_id in connected_peers:
             self._disconnect(peer_id, leave=True)
@@ -627,7 +689,7 @@ class SwchAgent():
             # Re-enable rejoin mechanism for potential reuse
             self.enable_rejoin()
         
-        self.logger.info("SwchAgent shutdown complete")
+        self.logger.info("Shutdown complete")
 
     def start(self):
         """Start the SwarmChestrate P2P system"""
