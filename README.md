@@ -23,7 +23,7 @@
 
 ---
 
-## Developement
+## Development
 
 ## Installing Poetry
 
@@ -134,13 +134,13 @@ deferred.addCallback(lambda protocol: print("Connected to peer"))
 
 #### Leaving Networks
 
-**`disconnect(peer_id: str) -> bool`**
+**`disconnect(peer_id: str) -> Deferred`**
 Disconnect from a specific peer.
 
 ```python
-success = agent.disconnect("peer-uuid-123")
-if success:
-    print("Disconnection initiated")
+deferred = agent.disconnect("peer-uuid-123")
+deferred.addCallback(lambda _: print("Successfully disconnected from peer"))
+deferred.addErrback(lambda failure: print(f"Disconnection failed: {failure.getErrorMessage()}"))
 ```
 
 **`leave() -> Deferred`**
@@ -149,6 +149,7 @@ Gracefully leave the network.
 ```python
 deferred = agent.leave()
 deferred.addCallback(lambda _: print("Successfully left network"))
+deferred.addErrback(lambda failure: print(f"Leave failed: {failure.getErrorMessage()}"))
 ```
 
 ### Messaging
@@ -193,15 +194,16 @@ agent.register_message_handler("chat", handle_chat)
 Register event listeners with method chaining support.
 
 ```python
-agent.on("peer:connected", lambda peer_id: print(f"Peer {peer_id} connected")) \
-     .on("peer:disconnected", lambda peer_id: print(f"Peer {peer_id} disconnected")) \
-     .on("peer:discovered", lambda peer_id: print(f"Discovered peer {peer_id}"))
+agent.on("entered", lambda: print("Successfully entered the network")) \
+     .on("left", lambda: print("Successfully left the network")) \
+     .on("peer:connected", lambda peer_id: print(f"New peer connected: {peer_id}")) \
+     .on("peer:discovered", lambda peer_id: print(f"Discovered peer: {peer_id}"))
 ```
 
 #### Available Events
 
 - `entered` - When the agent successfully enters the network
-- `left` - When the agent successfully left the network
+- `left` - When the agent successfully leaves the network
 - `peer:connected` - When a peer establishes a direct connection
 - `peer:disconnected` - When a peer disconnects
 - `peer:all_disconnected` - When all peers disconnect (triggers rejoin if enabled)

@@ -562,16 +562,16 @@ class SwchAgent():
         self.logger.info(f"Connecting to known peer {peer_id} at {ip}:{port}")
         return self._connect(ip, port)
 
-    def _disconnect(self, peer_id: str, leave: bool= False) -> bool:
+    def _disconnect(self, peer_id: str, leave: bool= False) -> defer.Deferred:
         """Disconnects from a specific peer."""
         peer_info = self.factory.peers.get_peer_info(peer_id)
         if not peer_info:
             self.logger.warning(f"Cannot disconnect: peer {peer_id} not found")
-            return False
+            return defer.fail(ValueError(f"Peer {peer_id} not found in known peers"))
 
         if not leave and self.factory.get_connection_count() < 2:
             self.logger.warning("Cannot disconnect: this is the last connection")
-            return False
+            return defer.fail(ValueError("Cannot disconnect: this is the last connection"))
         
         if not leave:
             # Notify the peer about the intentional disconnect
@@ -580,16 +580,50 @@ class SwchAgent():
             # Set intentional disconnect flag
             self.factory.peers.set_is_intentional_disconnect(peer_id, True)
 
-        # Close both local and remote connections if they exist
-        for connection_type in ['local', 'remote']:
-            if connection_type in peer_info and 'transport' in peer_info[connection_type]:
-                transport = peer_info[connection_type]['transport']
-                if transport:
-                    transport.loseConnection()
+        # Create a deferred that will fire when the peer is disconnected
+        result_d = defer.Deferred()
 
-        return True
+        # Define a one-time listener for the 'peer:disconnected' event
+        def _on_success(disconnected_peer_id):
+            if peer_id == disconnected_peer_id:
+                self.factory.remove_event_listener('peer:disconnected', _on_success)
+                result_d.callback(None)
 
-    def disconnect(self, peer_id: str) -> bool:
+        # 6) Add timeout protection
+        def _on_timeout():
+            self.factory.remove_event_listener('peer:disconnected', _on_success)
+            if not result_d.called:
+                timeout_error = TimeoutError(f"Disconnection from {peer_id} timed out waiting for 'peer:disconnected' event")
+                self.logger.error(str(timeout_error))
+                result_d.errback(timeout_error)
+
+        try:
+            # Add the listener to the factory
+            self.factory.add_event_listener('peer:disconnected', _on_success)
+
+            # Set up a timeout (30 seconds)
+            timeout_call = reactor.callLater(30.0, _on_timeout)
+            
+            def cleanup_timeout(result):
+                if timeout_call.active():
+                    timeout_call.cancel()
+                return result
+            
+            result_d.addBoth(cleanup_timeout)
+
+            # Attempt to disconnect from the peer
+            self.factory.disconnect_from_peer(peer_id)
+        except Exception as e:
+            self.factory.remove_event_listener('peer:disconnected', _on_success)
+            if timeout_call.active():
+                timeout_call.cancel()
+            msg = f"Exception while attempting disconnection from {peer_id}: {e!s}"
+            self.logger.error(msg)
+            return defer.fail(e)
+
+        return result_d
+
+    def disconnect(self, peer_id: str) -> defer.Deferred:
         """Disconnect from a specific peer.
         
         This method terminates the connection to a specified peer by closing both
@@ -603,15 +637,14 @@ class SwchAgent():
                     a valid peer ID of a currently connected peer.
                     
         Returns:
-            True if the disconnection was initiated successfully, False if the peer
-            was not found or disconnection was prevented (e.g., last connection).
-            
+            A Deferred that fires when disconnection is complete.
+            - On success: fires with None
+            - On failure: fires with the error that occurred
+    
         Example:
-            success = agent.disconnect('peer-uuid-123')
-            if success:
-                print("Disconnection initiated")
-            else:
-                print("Could not disconnect from peer")
+            d = agent.disconnect('peer-uuid-123')
+            d.addCallback(lambda _: print("Successfully disconnected from peer"))
+            d.addErrback(lambda failure: print(f"Disconnection failed: {failure.getErrorMessage()}"))
         """
         return self._disconnect(peer_id)
 
@@ -634,6 +667,7 @@ class SwchAgent():
         Example:
             d = agent.leave()
             d.addCallback(lambda _: print("Successfully left the network"))
+            d.addErrback(lambda failure: print(f"Leave failed: {failure.getErrorMessage()}"))
         """
         self.logger.info("Shutting down...")
         
@@ -658,21 +692,51 @@ class SwchAgent():
         
         # Create a deferred that will fire when all disconnections are complete
         shutdown_deferred = defer.Deferred()
+        timeout_call = None
         
         def on_left_network():
             """Callback for when the agent has left the network"""
             # Clean up listener
             self.factory.remove_event_listener('peer:all_disconnected', on_left_network)
+            # Cancel timeout
+            if timeout_call and timeout_call.active():
+                timeout_call.cancel()
             # Complete shutdown
             self._complete_shutdown()
             self.factory.on_left_event()
-            shutdown_deferred.callback(None)
+            if not shutdown_deferred.called:
+                shutdown_deferred.callback(None)
 
-        self.factory.add_event_listener('peer:all_disconnected', on_left_network)
+        def on_timeout():
+            """Handle timeout if disconnections take too long"""
+            self.factory.remove_event_listener('peer:all_disconnected', on_left_network)
+            self.logger.warning("Leave operation timed out, forcing shutdown")
+            # Force complete shutdown even if some peers didn't disconnect properly
+            self._complete_shutdown()
+            self.factory.on_left_event()
+            if not shutdown_deferred.called:
+                shutdown_deferred.callback(None)
 
-        # Disconnect from all connected peers
-        for peer_id in connected_peers:
-            self._disconnect(peer_id, leave=True)
+        try:
+            # Register listener before starting disconnections
+            self.factory.add_event_listener('peer:all_disconnected', on_left_network)
+            
+            # Set up timeout (60 seconds for leave operation)
+            timeout_call = reactor.callLater(60.0, on_timeout)
+            
+            # Start disconnections - errors are logged but don't fail the leave operation
+            for peer_id in connected_peers:
+                d = self._disconnect(peer_id, leave=True)
+                d.addErrback(lambda failure, p=peer_id: 
+                    self.logger.warning(f"Disconnect from {p} failed: {failure.getErrorMessage()}"))
+
+        except Exception as e:
+            # Clean up on setup failure
+            if timeout_call and timeout_call.active():
+                timeout_call.cancel()
+            self.factory.remove_event_listener('peer:all_disconnected', on_left_network)
+            self.logger.error(f"Exception during leave setup: {e}")
+            return defer.fail(e)
         
         return shutdown_deferred
     

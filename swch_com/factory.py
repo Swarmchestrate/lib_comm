@@ -91,6 +91,19 @@ class P2PFactory(Factory):
         """Private method to decrement connection count"""
         self._connection_count -= 1
 
+    def disconnect_from_peer(self, peer_id: str) -> None:
+        """Disconnect from a specific peer by closing their transport connection."""
+        peer_info = self.peers.get_peer_info(peer_id)
+        if not peer_info:
+            self.logger.warning(f"Cannot disconnect: peer {peer_id} not found")
+            raise ValueError(f"No such peer {peer_id} in registry.")
+        # Close both local and remote connections if they exist
+        for connection_type in ['local', 'remote']:
+            if connection_type in peer_info and 'transport' in peer_info[connection_type]:
+                transport = peer_info[connection_type]['transport']
+                if transport:
+                    transport.loseConnection()      
+
     def get_connection_count(self) -> int:
         """Private method to get current connection count"""
         return self._connection_count
