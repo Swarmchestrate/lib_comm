@@ -25,32 +25,45 @@ class SwchAgent():
 
         Args:
             peer_id: Unique identifier for the peer. If None, a UUID will be generated.
-            listen_ip: The IP address to listen on for incoming connections.
-            listen_port: The port to listen on for incoming connections.
-            public_ip: The advertised IP address of the peer. Defaults to listen_ip if not provided.
-            public_port: The advertised port of the peer. Defaults to listen_port if not provided.
+            listen_ip: The IP address to listen on for incoming connections. If None, 
+                      the agent will not start a server for incoming connections.
+            listen_port: The port to listen on for incoming connections. If None,
+                        the agent will not start a server for incoming connections.
+            public_ip: The advertised IP address of the peer. If provided, public_port
+                      must also be provided. Cannot be set without listen_ip and listen_port.
+            public_port: The advertised port of the peer. If provided, public_ip
+                        must also be provided. Cannot be set without listen_ip and listen_port.
             metadata: Optional dictionary containing peer metadata (e.g., universe, peer_type, etc.).
             enable_rejoin: Whether to enable automatic rejoin mechanism when all peers disconnect.
+            
+        Raises:
+            ValueError: If public_ip and public_port are provided without listen_ip and listen_port.
         """
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
         if not peer_id:
             peer_id = str(uuid.uuid4())
 
-        args = ()
-        if listen_ip and listen_port:
-            args = (listen_ip, listen_port)
-        elif public_ip and public_port:
-            args = (public_ip, public_port)
+        if (not listen_ip and not listen_port) and public_ip and public_port:
+            self.logger.error("Cannot set public IP and port without listening IP and port")
+            raise ValueError("Cannot set public IP and port without listening IP and port")
 
-        self.factory = P2PFactory(peer_id, metadata, *args)
+        public_address = ()
+        if public_ip and public_port:
+            public_address = (public_ip, public_port)
+        elif listen_ip and listen_port:
+            public_address = (listen_ip, listen_port)
+        else:
+            public_address = (None, None)
+
+        self.factory = P2PFactory(peer_id, metadata, *public_address)
 
         if metadata is None:
             metadata = {}
 
         self.peer_id = peer_id
-        self.public_ip = public_ip or listen_ip
-        self.public_port = public_port or listen_port
+        self.public_ip = public_address[0]
+        self.public_port = public_address[1]
         self.metadata = metadata
         
         # Rejoin mechanism settings
@@ -65,7 +78,7 @@ class SwchAgent():
         
         self.logger.info(f"SwchAgent initialized with ID: {self.peer_id}, listening on {listen_ip}:{listen_port}, public IP: {public_ip}:{public_port}, metadata: {metadata}")
 
-        if args:
+        if listen_ip and listen_port:
             # Start server if listen_ip and listen_port are provided
             self._start_server(self.factory, listen_ip, listen_port)
 
