@@ -5,8 +5,8 @@ import json
 import logging
 from typing import Optional, Dict, Any, List
 
-from swch_com.peers import Peers
-from swch_com.message_types import SystemMessageType
+from swchp2pcom.peers import Peers
+from swchp2pcom.message_types import SystemMessageType
 
 class P2PNode(Protocol):
     def __init__(self, factory, peers: Peers, is_initiator: bool = False, is_entering: bool = False):

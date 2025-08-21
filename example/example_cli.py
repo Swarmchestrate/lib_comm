@@ -1,4 +1,4 @@
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 
 import logging
 import argparse
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     peer_id = "client123"
-    com = SwchAgent(peer_id,
+    com = SwchPeer(peer_id,
                     enable_rejoin=False,
                     metadata={"peer_type":"CL"})
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
             global getstate_happened
             if getstate_happened:
                 return
-            sa_id=com.findPeers({"appid":args.getstate, "peer_type":"SA"})
+            sa_id=com.find_peers({"appid":args.getstate, "peer_type":"SA"})
             if not sa_id:
                 return
             sa_id = sa_id[0]  # Assuming there is only one SA with the specified appid

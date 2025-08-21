@@ -6,12 +6,12 @@ from twisted.internet.task import deferLater
 from twisted.internet.defer import DeferredList, ensureDeferred
 from pytest_twisted import blockon
 
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 
 @pytest.fixture
 def agent_factory():
     """
-    Returns a function create_agents(n, *, prefix="agent") → List[SwchAgent].
+    Returns a function create_agents(n, *, prefix="agent") → List[SwchPeer].
     """
     host = "127.0.0.1"
     created = []
@@ -26,7 +26,7 @@ def agent_factory():
             sock.close()
 
             agent_id = f"{prefix}{i+1}"
-            agent = SwchAgent(agent_id,metadata=metadata,listen_ip=host, listen_port=port)
+            agent = SwchPeer(agent_id,metadata=metadata,listen_ip=host, listen_port=port)
             agents.append(agent)
             created.append(agent)
         return agents
@@ -1033,19 +1033,19 @@ def test_find_peers_by_metadata(agent_factory):
             assert agent.get_peer_metadata(agents[i].peer_id) == agents_metadata[i], f"Metadata for agent {i} should match"
 
     # Test finding by single metadata field
-    results = agents[0].findPeers({"type": "worker"})
+    results = agents[0].find_peers({"type": "worker"})
     assert len(results) == 2, "Should find 2 workers"
     
     # Test finding by multiple metadata fields
-    results = agents[1].findPeers({"type": "worker", "region": "us-east"})
+    results = agents[1].find_peers({"type": "worker", "region": "us-east"})
     assert len(results) == 2, "Should find 2 workers in us-east"
     
     # Test finding by exact metadata match
-    results = agents[2].findPeers({"type": "worker", "region": "us-east", "version": "1.0"})
+    results = agents[2].find_peers({"type": "worker", "region": "us-east", "version": "1.0"})
     assert len(results) == 1, "Should find exactly 1 worker in us-east with version 1.0"
     
     # Test finding non-matching metadata
-    results = agents[0].findPeers({"type": "nonexistent"})
+    results = agents[0].find_peers({"type": "nonexistent"})
     assert len(results) == 0, "Should find no peers with non-existent type"
 
 @pytest_twisted.inlineCallbacks
@@ -1071,7 +1071,7 @@ def test_connect_by_id(agent_factory):
     assert a3.peer_id in a1_peers, "a1 should know about a3 through peer discovery"
     
     # Verify initial connections - a1 should not be directly connected to a3
-    a1_connected_peers = a1.getConnectedPeers()
+    a1_connected_peers = a1.get_connected_peers()
     assert a3.peer_id not in a1_connected_peers, "a1 should not be directly connected to a3 initially"
     assert a2.peer_id in a1_connected_peers, "a1 should be connected to a2"
     
@@ -1085,7 +1085,7 @@ def test_connect_by_id(agent_factory):
     assert a1.get_connection_count() == 2, "a1 should now have two direct connections"
     
     # Verify a1 is now directly connected to a3
-    a1_connected_peers_after = a1.getConnectedPeers()
+    a1_connected_peers_after = a1.get_connected_peers()
     assert a3.peer_id in a1_connected_peers_after, "a1 should now be directly connected to a3"
     assert a2.peer_id in a1_connected_peers_after, "a1 should still be connected to a2"
     
@@ -1106,4 +1106,3 @@ def test_connect_by_id(agent_factory):
     except Exception:
         # This is acceptable - already connected
         pass
-    

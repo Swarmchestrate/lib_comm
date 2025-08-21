@@ -1,5 +1,5 @@
 """
-Message type constants and enums for the SwchAgent P2P communication library.
+Message type constants and enums for the SwchPeer P2P communication library.
 
 This module defines standardized message types used for system-level communication
 between peers in the network, ensuring consistency and reducing the risk of typos

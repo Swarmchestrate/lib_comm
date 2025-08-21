@@ -1,4 +1,4 @@
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 
 import logging
 import argparse
@@ -36,7 +36,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     peer_id = "SA123"
-    com = SwchAgent(peer_id,
+    com = SwchPeer(peer_id,
                     listen_ip, listen_port,
                     metadata={"peer_type":"SA","appid":args.appid})
 

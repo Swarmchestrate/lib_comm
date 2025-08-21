@@ -5,7 +5,7 @@ from twisted.internet import reactor
 from twisted.internet.task import deferLater
 import pytest_twisted
 
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 
 
 def get_free_port():
@@ -34,7 +34,7 @@ def test_swch_agent_integration():
     
     # Step 1: Start peer P1 with type="RA", id="wmin.ac.uk"
     p1_port = get_free_port()
-    p1 = SwchAgent(
+    p1 = SwchPeer(
         peer_id="wmin.ac.uk",
         listen_ip="127.0.0.1",
         listen_port=p1_port,
@@ -44,7 +44,7 @@ def test_swch_agent_integration():
     
     # Step 2: Start peer P2 with type="RA", id="napier.ac.uk"; connecting to P1
     p2_port = get_free_port()
-    p2 = SwchAgent(
+    p2 = SwchPeer(
         peer_id="napier.ac.uk",
         listen_ip="127.0.0.1",
         listen_port=p2_port,
@@ -55,7 +55,7 @@ def test_swch_agent_integration():
     
     # Step 3: Start peer P3 with type="RA", id="sztaki.hu"; connecting to P2
     p3_port = get_free_port()
-    p3 = SwchAgent(
+    p3 = SwchPeer(
         peer_id="sztaki.hu",
         listen_ip="127.0.0.1",
         listen_port=p3_port,
@@ -66,7 +66,7 @@ def test_swch_agent_integration():
     
     # Step 4: Start peer P4 with type="CL"; connecting to P1
     p4_port = get_free_port()
-    p4 = SwchAgent(
+    p4 = SwchPeer(
         peer_id=str(uuid.uuid4()),
         metadata={"type": "CL"}
     )
@@ -124,7 +124,7 @@ def test_swch_agent_integration():
             # Step 11a: Start peer P5
             global p5
             p5_port = get_free_port()
-            p5 = SwchAgent(
+            p5 = SwchPeer(
                 peer_id="app1",
                 listen_ip="127.0.0.1",
                 listen_port=p5_port,
@@ -154,7 +154,7 @@ def test_swch_agent_integration():
     
     # Step 12: Start new peer P4 (second instance) with type="CL"; connecting to P1
     p4_second_port = get_free_port()
-    p4_second = SwchAgent(
+    p4_second = SwchPeer(
         peer_id=str(uuid.uuid4()),
         listen_ip="127.0.0.1",
         listen_port=p4_second_port,
@@ -164,7 +164,7 @@ def test_swch_agent_integration():
     yield deferLater(reactor, 2.0, lambda: None)  # Allow peer discovery
     
     # Step 13: P4 searches for peers with metadata appid="app1"
-    app1_peers = p4_second.findPeers({"appid": "app1"})
+    app1_peers = p4_second.find_peers({"appid": "app1"})
     assert len(app1_peers) > 0, "Should find P5 with appid=app1"
     test_state.app1SA = app1_peers[0]  # Store the peer ID
     

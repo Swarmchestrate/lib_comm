@@ -7,9 +7,9 @@ from typing import Optional, Dict, Any, List
 from twisted.internet.protocol import Factory
 from twisted.internet.task import LoopingCall
 
-from swch_com.node import P2PNode
-from swch_com.peers import Peers
-from swch_com.message_types import SystemMessageType
+from swchp2pcom.node import P2PNode
+from swchp2pcom.peers import Peers
+from swchp2pcom.message_types import SystemMessageType
 
 class P2PFactory(Factory):
     def __init__(self, peer_id: str, metadata: dict, public_ip: Optional[str] = None, public_port: Optional[str] = None):

@@ -90,16 +90,16 @@ Poetry version 1.x.x
 
 ---
 
-## SwchAgent API Documentation
+## SwchPeer API Documentation
 
-The `SwchAgent` class provides a high-level interface for creating peer-to-peer networks with automatic discovery, message handling, and network resilience features.
+The `SwchPeer` class provides a high-level interface for creating peer-to-peer networks with automatic discovery, message handling, and network resilience features.
 
 ### Initialization
 
 ```python
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 
-agent = SwchAgent(
+agent = SwchPeer(
     peer_id="my-peer-id",           # Optional: Auto-generated if None
     listen_ip="127.0.0.1",          # Optional: IP to listen on
     listen_port=8080,               # Optional: Port to listen on
@@ -190,7 +190,7 @@ agent.register_message_handler("chat", handle_chat)
 
 ### Event System
 
-**`on(event_name: str, listener: Callable) -> SwchAgent`**
+**`on(event_name: str, listener: Callable) -> SwchPeer`**
 Register event listeners with method chaining support.
 
 ```python
@@ -213,28 +213,28 @@ agent.on("entered", lambda: print("Successfully entered the network")) \
 
 ### Peer Discovery
 
-**`findPeers(metadata: Optional[Dict] = None) -> List[str]`**
+**`find_peers(metadata: Optional[Dict] = None) -> List[str]`**
 Search for peers based on metadata criteria.
 
 ```python
 # Find all peers
-all_peers = agent.findPeers()
+all_peers = agent.find_peers()
 
 # Find peers by type
-workers = agent.findPeers({"type": "worker"})
+workers = agent.find_peers({"type": "worker"})
 
 # Find peers with multiple criteria
-specific_peers = agent.findPeers({
+specific_peers = agent.find_peers({
     "universe": "production",
     "type": "coordinator"
 })
 ```
 
-**`getConnectedPeers() -> List[str]`**
+**`get_connected_peers() -> List[str]`**
 Get list of currently connected peer IDs.
 
 ```python
-connected = agent.getConnectedPeers()
+connected = agent.get_connected_peers()
 print(f"Connected to {len(connected)} peers")
 ```
 
@@ -310,11 +310,11 @@ agent.stop()
 ### Complete Example
 
 ```python
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 import time
 
 # Create agent
-agent = SwchAgent(
+agent = SwchPeer(
     peer_id="worker-1",
     listen_ip="127.0.0.1",
     listen_port=8081,

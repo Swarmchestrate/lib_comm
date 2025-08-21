@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from twisted.internet.task import LoopingCall
 
-from swch_com.swchagent import SwchAgent
+from swchp2pcom import SwchPeer
 
 
 if __name__ == "__main__":
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     else:
         peer_id = str(uuid.uuid4())
 
-    com = SwchAgent(peer_id, listen_ip, listen_port, 
+    com = SwchPeer(peer_id, listen_ip, listen_port, 
                     public_ip, public_port,
                     metadata={"peer_type":"RA"})
     

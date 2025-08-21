@@ -6,11 +6,11 @@ from twisted.internet import reactor, defer
 from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
 from twisted.internet.task import deferLater
 
-from swch_com.factory import P2PFactory
-from swch_com.node import P2PNode
-from swch_com.message_types import SystemMessageType
+from swchp2pcom.factory import P2PFactory
+from swchp2pcom.node import P2PNode
+from swchp2pcom.message_types import SystemMessageType
 
-class SwchAgent():
+class SwchPeer():
     def __init__(
         self, 
         peer_id: Optional[str], 
@@ -21,7 +21,7 @@ class SwchAgent():
         metadata: Optional[Dict[str, Any]] = None, 
         enable_rejoin: bool = True
     ) -> None:
-        """Initialize the SwchAgent with peer ID, network settings, and optional metadata.
+        """Initialize the SwchPeer with peer ID, network settings, and optional metadata.
 
         Args:
             peer_id: Unique identifier for the peer. If None, a UUID will be generated.
@@ -76,7 +76,7 @@ class SwchAgent():
         # Set up rejoin mechanism
         self._setup_rejoin_mechanism()
         
-        self.logger.info(f"SwchAgent initialized with ID: {self.peer_id}, listening on {listen_ip}:{listen_port}, public IP: {public_ip}:{public_port}, metadata: {metadata}")
+        self.logger.info(f"SwchPeer initialized with ID: {self.peer_id}, listening on {listen_ip}:{listen_port}, public IP: {public_ip}:{public_port}, metadata: {metadata}")
 
         if listen_ip and listen_port:
             # Start server if listen_ip and listen_port are provided
@@ -331,7 +331,7 @@ class SwchAgent():
 
         logging.info(f"Peer listening for connections on {ip}:{port}...")
 
-    def on(self, event_name: str, listener: Callable) -> 'SwchAgent':
+    def on(self, event_name: str, listener: Callable) -> 'SwchPeer':
         """Register an event listener for a specific event type.
         
         This method allows you to register callback functions that will be invoked
@@ -353,7 +353,7 @@ class SwchAgent():
                      The function signature depends on the event type.
                      
         Returns:
-            The SwchAgent instance for method chaining.
+            The SwchPeer instance for method chaining.
             
         Example:
             agent.on('peer:connected', lambda peer_id: print(f"Peer {peer_id} connected"))
@@ -362,7 +362,7 @@ class SwchAgent():
         self.factory.add_event_listener(event_name, listener)
         return self
 
-    def getConnectedPeers(self) -> List[str]:
+    def get_connected_peers(self) -> List[str]:
         """Get a list of peer IDs with live connection to us.
         
         This method examines all known peers and returns a list containing the IDs
@@ -374,7 +374,7 @@ class SwchAgent():
             Returns an empty list if no peers are connected.
             
         Example:
-            connected = agent.getConnectedPeers()
+            connected = agent.get_connected_peers()
             for peer_id in connected:
                 print(f"Connected to peer: {peer_id}")
         """
@@ -664,7 +664,7 @@ class SwchAgent():
     def leave(self) -> defer.Deferred:
         """Gracefully leave the peer network and shutdown the agent.
         
-        This method performs a complete shutdown of the SwchAgent, including:
+        This method performs a complete shutdown of the SwchPeer, including:
         1. Disabling the rejoin mechanism to prevent reconnection during shutdown
         2. Notifying all connected peers of the departure
         3. Closing all active connections and waiting for disconnections to complete
@@ -696,7 +696,7 @@ class SwchAgent():
         self.factory.broadcast_remove_peer(self.peer_id)
 
         # Get list of connected peers before starting disconnections
-        connected_peers = self.getConnectedPeers()
+        connected_peers = self.get_connected_peers()
         
         if not connected_peers:
             # No connections to close, complete shutdown immediately
@@ -778,7 +778,7 @@ class SwchAgent():
         reactor.stop()
         self.logger.info("Stopping SwarmChestrate P2P system...")
 
-    def findPeers(self, metadata=None):
+    def find_peers(self, metadata=None):
         """Search for peers based on metadata criteria.
         
         This method searches through all known peers and returns those that match
@@ -798,13 +798,13 @@ class SwchAgent():
             
         Example:
             # Find all peers in the same universe
-            universe_peers = agent.findPeers({'universe': 'production'})
+            universe_peers = agent.find_peers({'universe': 'production'})
             
             # Find all worker type peers
-            workers = agent.findPeers({'peer_type': 'worker'})
+            workers = agent.find_peers({'peer_type': 'worker'})
             
             # Find peers matching multiple criteria
-            specific_peers = agent.findPeers({
+            specific_peers = agent.find_peers({
                 'universe': 'test',
                 'peer_type': 'coordinator',
                 'version': '2.1'
