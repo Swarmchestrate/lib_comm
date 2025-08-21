@@ -93,7 +93,7 @@ class P2PNode(Protocol):
                     self.factory.send_message(message)
 
                 self.logger.info(f"Recieved user-defined message: {message}")
-                
+
                 # Handle message since it must be a broadcast or targeted user-defined message
                 if message_type in self.factory.user_defined_msg_handlers:
                     func = self.factory.user_defined_msg_handlers[message_type]
@@ -150,11 +150,6 @@ class P2PNode(Protocol):
             self.factory.on_peer_discovered_event(remote_peer_id)
         self.factory.on_peer_connected_event(remote_peer_id)
 
-        # Let others know about the new peer in the network
-        if is_new_peer and len(self.peers.get_all_peers_items()) > 2:
-            # If this is a new peer, broadcast the updated peer list
-            self.broadcast_peer_list_update()
-
         # Process the peers list from the welcome message
         for peer_id, public_info, metadata in message.get("peers", []):
             if not self.peers.get_peer_info(peer_id):
@@ -165,6 +160,11 @@ class P2PNode(Protocol):
 
                 # Raise peer discovered event
                 self.factory.on_peer_discovered_event(peer_id)
+
+        # Let others know about the new peer in the network
+        if is_new_peer and len(self.peers.get_all_peers_items()) > 2:
+            # If this is a new peer, broadcast the updated peer list
+            self.broadcast_peer_list_update()
 
         if (not self.is_entering) and is_new_peer:
             # Log the public peer list
