@@ -5,7 +5,7 @@
 
 ## Overview
 
-**Swch_comm** is a Python package for creating a peer to peer network.
+**SwchP2Pcom** is a Python package for creating a peer to peer network.
 
 ---
 
@@ -124,24 +124,7 @@ deferred.addCallback(lambda _: print("Successfully joined network"))
 deferred.addErrback(lambda failure: print(f"Failed to join: {failure.getErrorMessage()}"))
 ```
 
-**`connect(peer_id: str) -> Deferred`**
-Connect to a specific known peer by their ID.
-
-```python
-deferred = agent.connect("peer-uuid-123")
-deferred.addCallback(lambda protocol: print("Connected to peer"))
-```
-
 #### Leaving Networks
-
-**`disconnect(peer_id: str) -> Deferred`**
-Disconnect from a specific peer.
-
-```python
-deferred = agent.disconnect("peer-uuid-123")
-deferred.addCallback(lambda _: print("Successfully disconnected from peer"))
-deferred.addErrback(lambda failure: print(f"Disconnection failed: {failure.getErrorMessage()}"))
-```
 
 **`leave() -> Deferred`**
 Gracefully leave the network.
@@ -150,6 +133,27 @@ Gracefully leave the network.
 deferred = agent.leave()
 deferred.addCallback(lambda _: print("Successfully left network"))
 deferred.addErrback(lambda failure: print(f"Leave failed: {failure.getErrorMessage()}"))
+```
+
+#### Adding links to peers
+
+**`connect(peer_id: str) -> Deferred`**
+Connect to a specific known peer by their ID.
+
+```python
+deferred = agent.connect("peer-uuid-123")
+deferred.addCallback(lambda protocol: print("Connected to peer"))
+```
+
+#### Removing links to peers
+
+**`disconnect(peer_id: str) -> Deferred`**
+Disconnect from a specific peer.
+
+```python
+deferred = agent.disconnect("peer-uuid-123")
+deferred.addCallback(lambda _: print("Successfully disconnected from peer"))
+deferred.addErrback(lambda failure: print(f"Disconnection failed: {failure.getErrorMessage()}"))
 ```
 
 ### Messaging
@@ -361,7 +365,8 @@ except KeyboardInterrupt:
 For any questions or feedback, feel free to reach out:
 
 - **Email**: jozsef.kovacs@sztaki.hun-ren.hu
+- **Email**: benedek.kovacs@sztaki.hun-ren.hu
 
 ---
 
-Thank you for using **swch_comm**! 🎉
+Thank you for using **SwchP2Pcom**! 🎉
