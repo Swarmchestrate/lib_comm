@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "swchp2pcom"
-version = "0.4.0"
+version = "0.4.1"
 description = "A Python package for peer-to-peer communication for swarmchestrate entities"
 authors = [
     "Dr. József Kovács <jozsef.kovacs@sztaki.hun-ren.hu>",

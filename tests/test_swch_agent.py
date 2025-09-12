@@ -467,14 +467,15 @@ def test_send_to_list_of_peers(agent_factory):
     assert a3.get_connection_count() == 1, "a3 should have one connection"
 
     # Send a message from a1 to both a2 and a3
-    test_payload = {"content": "Hello to both agents!"}
-    a1.send([a2.peer_id, a3.peer_id], "multi_target", test_payload)
+    test_payload = {"content": "Hello to everyone including self!"}
+    a1.send(a1.find_peers() + [a1.peer_id], "multi_target", test_payload)
+    #a1.send([*a1.find_peers(), a1.peer_id], "multi_target", test_payload)
 
     # Wait for messages to be processed
     yield deferLater(reactor, 0.5, lambda: None)
 
     # Verify both a2 and a3 received the message
-    assert len(received_messages[a1.peer_id]) == 0, "a1 should not receive any messages"
+    assert len(received_messages[a1.peer_id]) == 1, "a1 should receive exactly one message"
     assert len(received_messages[a2.peer_id]) == 1, "a2 should receive exactly one message"
     assert len(received_messages[a3.peer_id]) == 1, "a3 should receive exactly one message"
 
@@ -767,13 +768,19 @@ def test_message_event_self_send(agent_factory):
     # Create a single agent
     a1 = agent_factory(1)[0]
     received_message = None
+    handler_called = False
 
     # Register on:message event handler
     def on_message(data):
         nonlocal received_message
         received_message = data
 
+    def handler(sender_id, message):
+        nonlocal handler_called
+        handler_called = True
+
     a1.on('message', on_message)
+    a1.register_message_handler("self_message", handler)
 
     # Send a test message to self
     test_payload = {
@@ -790,6 +797,8 @@ def test_message_event_self_send(agent_factory):
     assert received_message['peer_id'] == a1.peer_id, "Unexpected sender ID for self-send"
     assert received_message['message_type'] == "self_message", "Wrong message type for self-send"
     assert received_message['payload'] == test_payload, "Message payload does not match for self-send"
+
+    assert handler_called, "Registered message handler was not called for self-send"
 
 @pytest_twisted.inlineCallbacks
 def test_all_disconnected_event(agent_factory):
