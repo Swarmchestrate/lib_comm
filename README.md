@@ -18,75 +18,23 @@
 
 ## Prerequisites
 
-- Python 3.8 or later
-- Poetry 1.2 or later
-
----
-
-## Development
-
-## Installing Poetry
-
-If Poetry is not already installed on your system, follow these steps:
-
-### 1. Install Poetry
-
-Run the official installation script provided by Poetry:
-
-```bash
-curl -sSL https://install.python-poetry.org | python3 -
-```
-
-### 2. Verify Installation
-
-Ensure Poetry is installed correctly by checking its version:
-
-```bash
-poetry --version
-```
-
-You should see something like:
-
-```
-Poetry version 1.x.x
-```
+- Python 3.12 or later
 
 ---
 
 ## Installation
 
-1. Clone the repository:
+### From PyPI (Recommended)
 
-   ```bash
-   git clone https://github.com/Swarmchestrate/lib_comm
-   cd lib_comm
-   ```
+Install the package directly from PyPI using pip:
 
-2. Install dependencies using Poetry:
+```bash
+pip install swchp2pcom
+```
 
-   ```bash
-   poetry install
-   ```
+### From Source
 
-3. (Optional) Activate the virtual environment:
-
-   ```bash
-   poetry shell
-   ```
-
-   > Note: Activating the virtual environment is optional. You can still use the package directly by prefacing your commands with `poetry run`, which runs the script within Poetry's managed virtual environment.
-
-4. (Optional) Building the package:
-
-   ```bash
-   poetry build
-   ```
-
-5. Add new dependencies:
-
-   ```bash
-   poetry add <package-name>
-   ```
+For development or the latest features, you can install from source. See the [Developer README](DEVELOPER_README.md) for detailed development setup instructions.
 
 ---
 
