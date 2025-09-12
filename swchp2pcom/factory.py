@@ -256,11 +256,20 @@ class P2PFactory(Factory):
             listener(peer_id)
 
     def emit_message(self, peer_id: str, message: dict):
-        """Trigger the message event with formatted payload"""
-        self.logger.debug(f"Emitting message event from {peer_id}: {message}")
+        """Trigger the message event with formatted payload and trigger the registered handler"""
+        self.logger.debug(f"Message event triggered with {peer_id}: {message}")
+
+        message_type = message.get('message_type')
+
+        if message_type in self.user_defined_msg_handlers:
+            func = self.user_defined_msg_handlers[message_type]
+            func(message.get("peer_id",""), message.get("payload",""))
+        else:
+            self.logger.warning(f"Unknown message type received: {message_type}")
+
         event_data = {
             'peer_id': peer_id,
-            'message_type': message.get('message_type'),
+            'message_type': message_type,
             'payload': message.get('payload')
         }
         for listener in self.event_listeners.get('message', []):

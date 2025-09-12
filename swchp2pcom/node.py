@@ -92,16 +92,6 @@ class P2PNode(Protocol):
                 if target_id == "*":
                     self.factory.send_message(message)
 
-                self.logger.info(f"Recieved user-defined message: {message}")
-
-                # Handle message since it must be a broadcast or targeted user-defined message
-                if message_type in self.factory.user_defined_msg_handlers:
-                    func = self.factory.user_defined_msg_handlers[message_type]
-                    func(message.get("peer_id",""), message.get("payload",""))
-                else:
-                    self.logger.warning(f"Unknown message type received: {message_type}")
-                
-
                 # Emit message event
                 self.factory.emit_message(message.get("peer_id", ""), message)
 
