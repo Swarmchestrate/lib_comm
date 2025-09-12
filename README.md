@@ -160,13 +160,20 @@ deferred.addErrback(lambda failure: print(f"Disconnection failed: {failure.getEr
 
 #### Sending Messages
 
-**`send(peer_id: str, message_type: str, payload: Dict[str, Any]) -> None`**
-Send a targeted message to a specific peer.
+**`send(peer_id: Union[str, List[str]], message_type: str, payload: Dict[str, Any]) -> None`**
+Send a targeted message to one or more specific peers.
 
 ```python
+# Send to a single peer
 agent.send("peer-123", "chat", {
     "text": "Hello!",
     "timestamp": time.time()
+})
+
+# Send to multiple peers
+agent.send(["peer-123", "peer-456", "peer-789"], "notification", {
+    "message": "System update available",
+    "priority": "high"
 })
 ```
 
@@ -197,23 +204,117 @@ agent.register_message_handler("chat", handle_chat)
 **`on(event_name: str, listener: Callable) -> SwchPeer`**
 Register event listeners with method chaining support.
 
-```python
-agent.on("entered", lambda: print("Successfully entered the network")) \
-     .on("left", lambda: print("Successfully left the network")) \
-     .on("peer:connected", lambda peer_id: print(f"New peer connected: {peer_id}")) \
-     .on("peer:discovered", lambda peer_id: print(f"Discovered peer: {peer_id}"))
-```
-
 #### Available Events
 
-- `entered` - When the agent successfully enters the network
-- `left` - When the agent successfully leaves the network
-- `peer:connected` - When a peer establishes a direct connection
-- `peer:disconnected` - When a peer disconnects
-- `peer:all_disconnected` - When all peers disconnect (triggers rejoin if enabled)
-- `peer:discovered` - When a new peer is discovered in the network
-- `peer:undiscovered` - When a peer leaves the network
-- `message` - When any message is received
+**`entered`** - Triggered when the agent successfully enters the network
+- **Parameters**: None
+- **Handler signature**: `listener()`
+
+```python
+def on_entered():
+    print("Successfully joined the network!")
+
+agent.on("entered", on_entered)
+```
+
+**`left`** - Triggered when the agent successfully leaves the network
+- **Parameters**: None
+- **Handler signature**: `listener()`
+
+```python
+def on_left():
+    print("Successfully left the network!")
+
+agent.on("left", on_left)
+```
+
+**`peer:connected`** - Triggered when a peer establishes a direct connection to this agent
+- **Parameters**: `peer_id` (str) - The ID of the connected peer
+- **Handler signature**: `listener(peer_id: str)`
+
+```python
+def on_peer_connected(peer_id):
+    print(f"Direct connection established with peer: {peer_id}")
+    # You can now send messages directly to this peer
+
+agent.on("peer:connected", on_peer_connected)
+```
+
+**`peer:disconnected`** - Triggered when a peer disconnects from this agent
+- **Parameters**: `peer_id` (str) - The ID of the disconnected peer
+- **Handler signature**: `listener(peer_id: str)`
+
+```python
+def on_peer_disconnected(peer_id):
+    print(f"Lost direct connection with peer: {peer_id}")
+    # This peer may still be reachable through other peers
+
+agent.on("peer:disconnected", on_peer_disconnected)
+```
+
+**`peer:all_disconnected`** - Triggered when all peers disconnect from this agent (triggers rejoin if enabled)
+- **Parameters**: None
+- **Handler signature**: `listener()`
+
+```python
+def on_all_disconnected():
+    print("Lost all connections - isolated from network")
+    # If rejoin is enabled, automatic reconnection will start
+
+agent.on("peer:all_disconnected", on_all_disconnected)
+```
+
+**`peer:discovered`** - Triggered when a new peer is discovered in the network (may not be directly connected)
+- **Parameters**: `peer_id` (str) - The ID of the discovered peer
+- **Handler signature**: `listener(peer_id: str)`
+
+```python
+def on_peer_discovered(peer_id):
+    print(f"New peer discovered in network: {peer_id}")
+    metadata = agent.get_peer_metadata(peer_id)
+    if metadata:
+        print(f"Peer type: {metadata.get('type', 'unknown')}")
+
+agent.on("peer:discovered", on_peer_discovered)
+```
+
+**`peer:undiscovered`** - Triggered when a peer leaves the network entirely
+- **Parameters**: `peer_id` (str) - The ID of the peer that left
+- **Handler signature**: `listener(peer_id: str)`
+
+```python
+def on_peer_undiscovered(peer_id):
+    print(f"Peer left the network: {peer_id}")
+    # This peer is no longer reachable in the network
+
+agent.on("peer:undiscovered", on_peer_undiscovered)
+```
+
+**`message`** - Triggered when any message is received
+- **Parameters**: `event_data` (dict) - Contains message information
+  - `peer_id` (str) - ID of the sender
+  - `message_type` (str) - Type of the message
+  - `payload` (dict) - The message payload
+- **Handler signature**: `listener(event_data: dict)`
+
+```python
+def on_message(event_data):
+    sender = event_data['peer_id']
+    msg_type = event_data['message_type']
+    payload = event_data['payload']
+    print(f"Received {msg_type} from {sender}: {payload}")
+
+agent.on("message", on_message)
+```
+
+**Event Handler Chaining Example**
+
+```python
+agent.on("entered", lambda: print("Joined network")) \
+     .on("peer:connected", lambda peer_id: print(f"Connected: {peer_id}")) \
+     .on("peer:discovered", lambda peer_id: print(f"Discovered: {peer_id}")) \
+     .on("message", lambda event: print(f"Message from {event['peer_id']}: {event['message_type']}"))
+```
 
 ### Peer Discovery
 

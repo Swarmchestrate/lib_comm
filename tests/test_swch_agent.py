@@ -436,6 +436,49 @@ def test_custom_message_exchange_with_multiconnection(agent_factory):
     assert received['payload'] == test_payload, "Message payload should match"
 
 @pytest_twisted.inlineCallbacks
+def test_send_to_list_of_peers(agent_factory):
+    # Create 3 agents
+    a1, a2, a3 = agent_factory(3)
+    received_messages = {
+        a1.peer_id: [],
+        a2.peer_id: [],
+        a3.peer_id: []
+    }
+
+    # Register message event handlers for all agents
+    def create_message_event_handler(agent_id):
+        def on_message(data):
+            received_messages[agent_id].append(data)
+        return on_message
+
+    for agent in [a1, a2, a3]:
+        agent.on('message', create_message_event_handler(agent.peer_id))
+
+    # Connect agents in a triangle
+    a1.enter(a2.public_ip, a2.public_port)
+    a2.enter(a3.public_ip, a3.public_port)
+    
+    # Wait for connections to establish
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify initial connectivity
+    assert a1.get_connection_count() == 1, "a1 should have one connection"
+    assert a2.get_connection_count() == 2, "a2 should have two connections"
+    assert a3.get_connection_count() == 1, "a3 should have one connection"
+
+    # Send a message from a1 to both a2 and a3
+    test_payload = {"content": "Hello to both agents!"}
+    a1.send([a2.peer_id, a3.peer_id], "multi_target", test_payload)
+
+    # Wait for messages to be processed
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify both a2 and a3 received the message
+    assert len(received_messages[a1.peer_id]) == 0, "a1 should not receive any messages"
+    assert len(received_messages[a2.peer_id]) == 1, "a2 should receive exactly one message"
+    assert len(received_messages[a3.peer_id]) == 1, "a3 should receive exactly one message"
+
+@pytest_twisted.inlineCallbacks
 def test_indirect_message_exchange(agent_factory):
     # Create 3 agents in a linear topology: a1 <-> a2 <-> a3
     a1, a2, a3 = agent_factory(3)
@@ -718,6 +761,35 @@ def test_message_event(agent_factory):
     assert received_message['peer_id'] == a1.peer_id, "Unexpected sender ID"
     assert received_message['message_type'] == "test_message", "Wrong message type"
     assert received_message['payload'] == test_payload, "Message payload does not match"
+
+@pytest_twisted.inlineCallbacks
+def test_message_event_self_send(agent_factory):
+    # Create a single agent
+    a1 = agent_factory(1)[0]
+    received_message = None
+
+    # Register on:message event handler
+    def on_message(data):
+        nonlocal received_message
+        received_message = data
+
+    a1.on('message', on_message)
+
+    # Send a test message to self
+    test_payload = {
+        "content": "Self message",
+        "timestamp": 987654321
+    }
+    a1.send(a1.peer_id, "self_message", test_payload)
+
+    # Wait for message processing
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Verify message was received and event handler was triggered
+    assert received_message is not None, "Message event handler was not triggered for self-send"
+    assert received_message['peer_id'] == a1.peer_id, "Unexpected sender ID for self-send"
+    assert received_message['message_type'] == "self_message", "Wrong message type for self-send"
+    assert received_message['payload'] == test_payload, "Message payload does not match for self-send"
 
 @pytest_twisted.inlineCallbacks
 def test_all_disconnected_event(agent_factory):

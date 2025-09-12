@@ -154,6 +154,11 @@ class P2PFactory(Factory):
             self.logger.error(f"No such peer {peer_id} in registry.")
             raise ValueError(f"No such peer {peer_id} in registry.")
 
+        if message.get("target_id") == self.id:
+            self.logger.debug("Message is targeted to self, emitting message event.")
+            self.emit_message(self.id, message)
+            return
+
         # Find an active transport (local or remote) for that peer
         transport = None
         for loc in ("remote", "local"):
@@ -252,6 +257,7 @@ class P2PFactory(Factory):
 
     def emit_message(self, peer_id: str, message: dict):
         """Trigger the message event with formatted payload"""
+        self.logger.debug(f"Emitting message event from {peer_id}: {message}")
         event_data = {
             'peer_id': peer_id,
             'message_type': message.get('message_type'),
