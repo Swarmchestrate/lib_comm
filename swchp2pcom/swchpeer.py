@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Optional, Dict, Any, List, Callable
+from typing import Optional, Dict, Any, List, Callable, Union
 
 from twisted.internet import reactor, defer
 from twisted.internet.endpoints import TCP4ServerEndpoint, TCP4ClientEndpoint, connectProtocol
@@ -56,12 +56,12 @@ class SwchPeer():
         else:
             public_address = (None, None)
 
-        self.factory = P2PFactory(peer_id, metadata, *public_address)
-
         if metadata is None:
             metadata = {}
 
-        self.peer_id = peer_id
+        self._peer_id = peer_id
+
+        self.factory = P2PFactory(peer_id, metadata, *public_address)
         self.public_ip = public_address[0]
         self.public_port = public_address[1]
         self.metadata = metadata
@@ -90,6 +90,15 @@ class SwchPeer():
                 reactor.callLater(0, self._attempt_rejoin)
         
         self.factory.add_event_listener('peer:all_disconnected', on_all_disconnected)
+
+    @property
+    def peer_id(self) -> str:
+        """Get the peer ID.
+        
+        Returns:
+            The unique identifier for this peer.
+        """
+        return self._peer_id
 
     def _attempt_rejoin(self):
         """Attempt to rejoin the network by connecting to known peers"""
@@ -244,19 +253,20 @@ class SwchPeer():
             raise ValueError(f"Cannot register handler for system message type: {message_type}")
         self.factory.user_defined_msg_handlers[message_type] = func
 
-    def send(self, peer_id: str, message_type: str, payload: Dict[str, Any]) -> None:
-        """Send a message to a specific peer with a message type and payload.
+    def send(self, peer_id: Union[str, List[str]], message_type: str, payload: Dict[str, Any]) -> None:
+        """Send a message to one or more specific peers with a message type and payload.
         
-        This method sends a targeted message to a specific peer in the network.
+        This method sends a targeted message to specific peer(s) in the network.
         The message will include the specified type and payload, along with routing
-        information to ensure it reaches the intended recipient.
+        information to ensure it reaches the intended recipient(s).
         
         Args:
-            peer_id: The unique identifier of the peer to send the message to.
-                    Must be a valid peer ID of a known peer in the network.
+            peer_id: Either a single peer ID (str) or a list of peer IDs (List[str])
+                    to send the message to. All peer IDs must be valid identifiers
+                    of known peers in the network.
             message_type: The type of the message being sent (e.g., 'chat', 'data_request').
-                         This will be used by the recipient to route the message to
-                         the appropriate handler.
+                        This will be used by the recipient(s) to route the message to
+                        the appropriate handler.
             payload: The message payload containing the actual data to send.
                     Must be a dictionary with serializable values.
                     
@@ -264,17 +274,55 @@ class SwchPeer():
             None
             
         Raises:
-            ValueError: If the peer_id is not found in the known peers.
+            ValueError: If any peer_id is not found in the known peers, or if
+                    peer_id is an empty list.
             
-        Example:
+        Examples:
+            # Send to a single peer
             agent.send('peer123', 'chat', {'text': 'Hello!', 'timestamp': time.time()})
+            
+            # Send to multiple peers
+            agent.send(['peer123', 'peer456', 'peer789'], 'notification', {
+                'message': 'System update available',
+                'priority': 'high'
+            })
         """
-        message = {
-            'message_type': message_type,
-            'payload': payload,
-            'target_id': peer_id  # Add explicit target
-                    }
-        self.factory.send_to_peer(peer_id, message)
+        # Handle single peer ID (string)
+        if isinstance(peer_id, str):
+            if not peer_id:
+                raise ValueError("peer_id cannot be empty")
+            
+            self.logger.debug(f"Sending message type '{message_type}' to peer {peer_id}")
+            message = {
+                'message_type': message_type,
+                'payload': payload,
+                'target_id': peer_id
+            }
+            self.factory.send_to_peer(peer_id, message)
+        
+        # Handle multiple peer IDs (list)
+        elif isinstance(peer_id, list):
+            if not peer_id:
+                raise ValueError("peer_id list cannot be empty")
+            
+            # Validate all peer IDs exist before sending to any
+            for pid in peer_id:
+                if not isinstance(pid, str):
+                    raise ValueError(f"All peer IDs must be strings, got {type(pid)}: {pid}")
+                
+            # Send to each peer individually
+            message_base = {
+                'message_type': message_type,
+                'payload': payload
+            }
+            
+            for pid in peer_id:
+                message = message_base.copy()
+                message['target_id'] = pid
+                self.factory.send_to_peer(pid, message)
+        
+        else:
+            raise ValueError(f"peer_id must be a string or list of strings, got {type(peer_id)}")
 
     def broadcast(self, message_type: str, payload: Dict[str, Any]) -> None:
         """Broadcast a message to all connected peers with a message type and payload.
