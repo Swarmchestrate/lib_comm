@@ -122,15 +122,19 @@ class SwchPeer():
             self.logger.info("Successfully reconnected to network")
             return defer.succeed(None)
         
-        # Calculate delay with exponential backoff
-        delay = self._rejoin_base_delay * (2 ** min(attempt, 5))  # Cap at 32 seconds
-        
-        self.logger.info(f"Rejoin attempt {attempt + 1}/{self._max_rejoin_attempts} after {delay}s delay")
-        
-        # Get all known peers with public information (excluding ourselves)
+        # Get all known peers with public information (excluding ourselves).
+        # If we have no peers to dial, there is nothing to rejoin to - aborting
+        # here avoids the noisy "No peers available for rejoin" backoff loop
+        # that fires when the only known counterpart has gracefully left.
         known_peers = self.factory.peers.get_known_peers_public_info(exclude_peer_id=self.factory.id)
         if not known_peers:
-            self.logger.warning("No peers available for rejoin")            
+            self.logger.info("No peers available for rejoin, aborting rejoin attempts")
+            return defer.succeed(None)
+
+        # Calculate delay with exponential backoff
+        delay = self._rejoin_base_delay * (2 ** min(attempt, 5))  # Cap at 32 seconds
+
+        self.logger.info(f"Rejoin attempt {attempt + 1}/{self._max_rejoin_attempts} after {delay}s delay")
 
         # Try connecting to peers sequentially
         d = self._try_sequential_connections(known_peers, 0)
