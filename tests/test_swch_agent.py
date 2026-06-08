@@ -1,3 +1,4 @@
+import logging
 import pytest, socket, uuid
 
 import pytest_twisted
@@ -1187,3 +1188,59 @@ def test_connect_by_id(agent_factory):
     except Exception:
         # This is acceptable - already connected
         pass
+
+
+class _ListLogHandler(logging.Handler):
+    """Capture log records emitted by the library for assertion in tests."""
+
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+@pytest_twisted.inlineCallbacks
+def test_no_rejoin_storm_when_only_peer_gracefully_leaves(agent_factory):
+    """Regression test for the 'rejoin with 0 known peers' bug.
+
+    Scenario: an RA peer (rejoin enabled) and a client peer are connected.
+    When the client gracefully calls leave(), the RA's known-peer list goes
+    empty (via BROADCAST_REMOVE_PEER), and its connection count hits zero.
+    The rejoin mechanism must abort immediately because there is nothing to
+    dial - it must not log a single "Rejoin attempt N/M ..." line and must
+    not remain in _rejoin_in_progress. Without the fix the RA produces 10
+    attempts over ~80 seconds, each followed by "No peers available for
+    rejoin".
+    """
+    ra, client = agent_factory(2)
+
+    swchpeer_logger = logging.getLogger("swchp2pcom.swchpeer")
+    handler = _ListLogHandler()
+    handler.setLevel(logging.DEBUG)
+    previous_level = swchpeer_logger.level
+    swchpeer_logger.addHandler(handler)
+    swchpeer_logger.setLevel(logging.DEBUG)
+
+    yield client.enter(ra.public_ip, ra.public_port)
+    yield deferLater(reactor, 0.3, lambda: None)
+    assert ra.get_connection_count() == 1, "RA should be connected to the client"
+
+    try:
+        yield client.leave()
+        yield deferLater(reactor, 3.0, lambda: None)
+
+        messages = [r.getMessage() for r in handler.records]
+        rejoin_attempts = [m for m in messages if m.startswith("Rejoin attempt")]
+
+        assert not rejoin_attempts, (
+            f"RA must abort rejoin immediately when no peers are known, "
+            f"but observed retry log lines: {rejoin_attempts}"
+        )
+        assert not ra.is_rejoin_in_progress(), (
+            "RA should not still be in rejoin state after the only peer left"
+        )
+    finally:
+        swchpeer_logger.removeHandler(handler)
+        swchpeer_logger.setLevel(previous_level)
