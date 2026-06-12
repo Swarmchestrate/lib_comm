@@ -10,14 +10,15 @@ readme = "README.md"
 packages = [{include = "swchp2pcom"}]
 
 [tool.poetry.dependencies]
-twisted = "*"
+twisted = ">=26.4.0"
 kademlia = "*"
 miniupnpc = "*"
 python = "^3.12"
 setuptools = ">=78.1.1"
+idna = ">=3.15"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
+pytest = "^9.0.3"
 pytest-twisted = "^1.14.0"
 
 [tool.pytest.ini_options]
