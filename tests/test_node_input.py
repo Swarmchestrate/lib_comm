@@ -216,3 +216,16 @@ def test_size_limit_is_lifted_after_welcome_message(node, monkeypatch):
     assert node.remote_id == "remote"
     node.transport.loseConnection.assert_not_called()
     node.factory.emit_message.assert_called_once()
+
+
+@pytest.mark.parametrize("is_initiator", [False, True])
+def test_connection_made_is_logged_at_debug_with_address(node, caplog, is_initiator):
+    node.is_initiator = is_initiator
+    node.transport.getHost.return_value = MagicMock(host="0.0.0.0", port=5000)
+
+    with caplog.at_level(logging.DEBUG, logger="swchp2pcom.node"):
+        node.connectionMade()
+
+    # Nothing above DEBUG, the remote is not identified yet
+    assert [r for r in caplog.records if r.levelno > logging.DEBUG] == []
+    assert any("203.0.113.7:40000" in r.getMessage() for r in caplog.records)

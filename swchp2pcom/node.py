@@ -30,11 +30,12 @@ class P2PNode(Protocol):
         peer_address = f"{peer.host}:{peer.port}"
         host_address = f"{host.host}:{host.port}"
 
-        self.logger.debug(f"Connected to peer at {peer_address} from {host_address}")
+        # Logged at DEBUG, the remote is unidentified until its welcome message arrives,
+        # identified peers are logged by the factory as "Connection established with ..."
         if self.is_initiator:
-            self.logger.info(f"Made connection to a peer...")
+            self.logger.debug(f"Made connection to a peer at {peer_address} from {host_address}")
         else:
-            self.logger.info(f"Peer made connection to us...")
+            self.logger.debug(f"Peer made connection to us from {peer_address} on {host_address}")
 
         self.send_welcome_info()
 
