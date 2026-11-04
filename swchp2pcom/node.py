@@ -9,6 +9,8 @@ from swchp2pcom.peers import Peers
 from swchp2pcom.message_types import SystemMessageType
 
 class P2PNode(Protocol):
+    MAX_UNIDENTIFIED_MESSAGE_SIZE = 16 * 1024 * 1024  # Max bytes buffered before the remote sends its welcome message
+
     def __init__(self, factory, peers: Peers, is_initiator: bool = False, is_entering: bool = False):
         self.factory = factory
         self.peers = peers
@@ -64,6 +66,11 @@ class P2PNode(Protocol):
                 self.handle_invalid_data(f"Received message is not a JSON object: {type(parsed_message).__name__}")
                 continue
             self.process_message(parsed_message)
+
+        # An unidentified connection that never sends a newline would grow the buffer forever,
+        # known peers are trusted and may send messages of any size
+        if not self.is_rejected and not self.remote_id and len(self.buffer) > self.MAX_UNIDENTIFIED_MESSAGE_SIZE:
+            self.handle_invalid_data(f"Message exceeds {self.MAX_UNIDENTIFIED_MESSAGE_SIZE} bytes")
 
     def handle_invalid_data(self, reason: str):
         """Handle data that is not a valid swchp2pcom message."""

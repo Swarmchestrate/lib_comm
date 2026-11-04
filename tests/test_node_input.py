@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from swchp2pcom.message_types import SystemMessageType
 from swchp2pcom.node import P2PNode
 
 
@@ -147,5 +148,71 @@ def test_known_peer_with_invalid_data_is_not_closed(known_node, caplog):
 def test_unidentified_connection_with_valid_message_is_kept(node):
     node.dataReceived(_encode(_app_message()))
 
+    node.transport.loseConnection.assert_not_called()
+    node.factory.emit_message.assert_called_once()
+
+
+def test_oversized_message_from_unidentified_connection_is_closed(node, caplog, monkeypatch):
+    monkeypatch.setattr(P2PNode, "MAX_UNIDENTIFIED_MESSAGE_SIZE", 100)
+
+    with caplog.at_level(logging.DEBUG, logger="swchp2pcom.node"):
+        node.dataReceived(b"x" * 60)
+        node.transport.loseConnection.assert_not_called()
+        node.dataReceived(b"x" * 60)
+
+    node.transport.loseConnection.assert_called_once()
+    assert node.buffer == b""
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "203.0.113.7:40000" in warnings[0] and "exceeds 100 bytes" in warnings[0]
+
+
+def test_unidentified_message_within_limit_split_across_chunks_is_accepted(node, monkeypatch):
+    raw = _encode(_app_message(text="x" * 150))
+    monkeypatch.setattr(P2PNode, "MAX_UNIDENTIFIED_MESSAGE_SIZE", len(raw))
+
+    for i in range(0, len(raw), 32):
+        node.dataReceived(raw[i:i + 32])
+
+    node.transport.loseConnection.assert_not_called()
+    node.factory.emit_message.assert_called_once()
+
+
+def test_complete_messages_before_oversized_tail_are_processed(node, monkeypatch):
+    monkeypatch.setattr(P2PNode, "MAX_UNIDENTIFIED_MESSAGE_SIZE", 100)
+
+    node.dataReceived(_encode(_app_message()) + b"x" * 101)
+
+    node.factory.emit_message.assert_called_once()
+    node.transport.loseConnection.assert_called_once()
+
+
+def test_known_peer_message_size_is_not_limited(known_node, monkeypatch):
+    monkeypatch.setattr(P2PNode, "MAX_UNIDENTIFIED_MESSAGE_SIZE", 100)
+    raw = _encode(_app_message(text="x" * 1000))
+
+    for i in range(0, len(raw), 32):
+        known_node.dataReceived(raw[i:i + 32])
+
+    known_node.transport.loseConnection.assert_not_called()
+    known_node.factory.emit_message.assert_called_once()
+
+
+def test_size_limit_is_lifted_after_welcome_message(node, monkeypatch):
+    monkeypatch.setattr(P2PNode, "MAX_UNIDENTIFIED_MESSAGE_SIZE", 100)
+    welcome = {
+        "message_type": SystemMessageType.SEND_WELCOME_INFO.value,
+        "message_id": "welcome",
+        "peer_id": "remote",
+        "peer_public_info": {"host": "203.0.113.7", "port": 5000},
+        "peers": [],
+    }
+    large = _encode(_app_message(text="x" * 1000))
+
+    # Welcome and the start of a large message arrive in the same chunk
+    node.dataReceived(_encode(welcome) + large[:500])
+    node.dataReceived(large[500:])
+
+    assert node.remote_id == "remote"
     node.transport.loseConnection.assert_not_called()
     node.factory.emit_message.assert_called_once()

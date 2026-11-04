@@ -8,6 +8,7 @@ from twisted.internet.defer import DeferredList, ensureDeferred
 from pytest_twisted import blockon
 
 from swchp2pcom import SwchPeer
+from swchp2pcom.node import P2PNode
 
 @pytest.fixture
 def agent_factory():
@@ -389,6 +390,28 @@ def test_custom_message_exchange_1(agent_factory):
     assert received['peer_id'] == a1.peer_id, "Message should be from a1"
     assert received['message_type'] == "custom_type", "Message type should match"
     assert received['payload'] == test_payload, "Message payload should match"
+
+@pytest_twisted.inlineCallbacks
+def test_large_message_exchange(agent_factory):
+    a1, a2 = agent_factory(2)
+    received_messages = []
+    a2.on('message', received_messages.append)
+
+    a1.enter(a2.public_ip, a2.public_port)
+    yield deferLater(reactor, 0.5, lambda: None)
+
+    # Larger than P2PNode.MAX_UNIDENTIFIED_MESSAGE_SIZE, known peers are not limited
+    test_payload = {"content": "x" * (P2PNode.MAX_UNIDENTIFIED_MESSAGE_SIZE + 1024 * 1024)}
+    a1.send(a2.peer_id, "custom_type", test_payload)
+
+    for _ in range(40):
+        if received_messages:
+            break
+        yield deferLater(reactor, 0.5, lambda: None)
+
+    assert len(received_messages) == 1, "a2 should receive the large message"
+    assert received_messages[0]['payload'] == test_payload, "Message payload should match"
+    assert a1.get_connection_count() == 1, "Connection should stay open"
 
 @pytest_twisted.inlineCallbacks
 def test_custom_message_exchange_with_multiconnection(agent_factory):
