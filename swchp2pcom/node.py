@@ -9,14 +9,17 @@ from swchp2pcom.peers import Peers
 from swchp2pcom.message_types import SystemMessageType
 
 class P2PNode(Protocol):
+    MAX_UNIDENTIFIED_MESSAGE_SIZE = 16 * 1024 * 1024  # Max bytes buffered before the remote sends its welcome message
+
     def __init__(self, factory, peers: Peers, is_initiator: bool = False, is_entering: bool = False):
         self.factory = factory
         self.peers = peers
 
-        self.buffer = ""  # Buffer to hold partial messages
+        self.buffer = b""  # Buffer to hold partial messages (raw bytes, decoded per line)
         self.is_initiator = is_initiator  # Track if this node initiated the connection
         self.is_entering = is_entering # Track if this node is created for entering the network
         self.remote_id: Optional[str] = None  # ID of the remote peer
+        self.is_rejected = False  # Set when the connection is closed because of invalid data
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
     def connectionMade(self):
@@ -27,34 +30,62 @@ class P2PNode(Protocol):
         peer_address = f"{peer.host}:{peer.port}"
         host_address = f"{host.host}:{host.port}"
 
-        self.logger.debug(f"Connected to peer at {peer_address} from {host_address}")
+        # Logged at DEBUG, the remote is unidentified until its welcome message arrives,
+        # identified peers are logged by the factory as "Connection established with ..."
         if self.is_initiator:
-            self.logger.info(f"Made connection to a peer...")
+            self.logger.debug(f"Made connection to a peer at {peer_address} from {host_address}")
         else:
-            self.logger.info(f"Peer made connection to us...")
+            self.logger.debug(f"Peer made connection to us from {peer_address} on {host_address}")
 
         self.send_welcome_info()
 
     def dataReceived(self, data: bytes):
         """Handle incoming data."""
-        try:
-            decoded_data = data.decode("utf-8")
-        except UnicodeDecodeError as e:
-            self.logger.error(f"Error decoding data: {e}")
-            return
+        if self.is_rejected:
+            return  # Connection is closing, ignore remaining data
 
-        self.buffer += decoded_data
-        lines = self.buffer.split("\n")
+        # Buffer raw bytes and decode only complete lines, so a multi-byte
+        # UTF-8 character split across TCP chunks is not lost
+        self.buffer += data
+        lines = self.buffer.split(b"\n")
         self.buffer = lines.pop()  # Save incomplete data
 
         for line in lines:
+            if self.is_rejected:
+                return
             if not line.strip():
                 continue  # Skip empty lines
             try:
-                parsed_message = json.loads(line)
-                self.process_message(parsed_message)
+                parsed_message = json.loads(line.decode("utf-8"))
+            except UnicodeDecodeError as e:
+                self.handle_invalid_data(f"Error decoding data: {e}")
+                continue
             except json.JSONDecodeError as e:
-                self.logger.error(f"Error decoding message: {e}")
+                self.handle_invalid_data(f"Error decoding message: {e}")
+                continue
+            if not isinstance(parsed_message, dict):
+                self.handle_invalid_data(f"Received message is not a JSON object: {type(parsed_message).__name__}")
+                continue
+            self.process_message(parsed_message)
+
+        # An unidentified connection that never sends a newline would grow the buffer forever,
+        # known peers are trusted and may send messages of any size
+        if not self.is_rejected and not self.remote_id and len(self.buffer) > self.MAX_UNIDENTIFIED_MESSAGE_SIZE:
+            self.handle_invalid_data(f"Message exceeds {self.MAX_UNIDENTIFIED_MESSAGE_SIZE} bytes")
+
+    def handle_invalid_data(self, reason: str):
+        """Handle data that is not a valid swchp2pcom message."""
+        if self.remote_id:
+            # Known peer, keep the connection and report the faulty message
+            self.logger.error(f"Invalid data from peer {self.remote_id}: {reason}")
+            return
+
+        # Unidentified connection (e.g. port scanner, HTTP or TLS client), log once and drop it
+        peer = self.transport.getPeer()
+        self.logger.warning(f"Closing connection from {peer.host}:{peer.port}, not a swchp2pcom peer: {reason}")
+        self.is_rejected = True
+        self.buffer = b""
+        self.transport.loseConnection()
 
     def process_message(self, message: Dict[str, Any]):
         """Handle and forward broadcast messages."""
@@ -62,7 +93,7 @@ class P2PNode(Protocol):
         target_id = message.get("target_id")
         
         if not message_id:
-            self.logger.warning("Received message without message_id")
+            self.handle_invalid_data("Received message without message_id")
             return
 
         if self.factory._is_message_seen(message_id):
