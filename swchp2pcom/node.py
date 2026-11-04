@@ -54,6 +54,9 @@ class P2PNode(Protocol):
             except json.JSONDecodeError as e:
                 self.logger.error(f"Error decoding message: {e}")
                 continue
+            if not isinstance(parsed_message, dict):
+                self.logger.error(f"Received message is not a JSON object: {type(parsed_message).__name__}")
+                continue
             self.process_message(parsed_message)
 
     def process_message(self, message: Dict[str, Any]):

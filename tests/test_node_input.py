@@ -79,3 +79,11 @@ def test_invalid_utf8_line_does_not_drop_following_message(node):
     node.dataReceived(raw)
 
     node.factory.emit_message.assert_called_once()
+
+
+@pytest.mark.parametrize("line", [b'"hello"', b"42", b"[1, 2]", b"null", b"true"])
+def test_non_object_json_is_rejected(node, line):
+    node.dataReceived(line + b"\n" + _encode(_app_message()))
+
+    # The non-object line is skipped without raising, the valid message still arrives
+    node.factory.emit_message.assert_called_once()
