@@ -17,6 +17,7 @@ class P2PNode(Protocol):
         self.is_initiator = is_initiator  # Track if this node initiated the connection
         self.is_entering = is_entering # Track if this node is created for entering the network
         self.remote_id: Optional[str] = None  # ID of the remote peer
+        self.is_rejected = False  # Set when the connection is closed because of invalid data
         self.logger = logging.getLogger(__name__)  # Initialize logger
 
     def connectionMade(self):
@@ -37,6 +38,9 @@ class P2PNode(Protocol):
 
     def dataReceived(self, data: bytes):
         """Handle incoming data."""
+        if self.is_rejected:
+            return  # Connection is closing, ignore remaining data
+
         # Buffer raw bytes and decode only complete lines, so a multi-byte
         # UTF-8 character split across TCP chunks is not lost
         self.buffer += data
@@ -44,20 +48,36 @@ class P2PNode(Protocol):
         self.buffer = lines.pop()  # Save incomplete data
 
         for line in lines:
+            if self.is_rejected:
+                return
             if not line.strip():
                 continue  # Skip empty lines
             try:
                 parsed_message = json.loads(line.decode("utf-8"))
             except UnicodeDecodeError as e:
-                self.logger.error(f"Error decoding data: {e}")
+                self.handle_invalid_data(f"Error decoding data: {e}")
                 continue
             except json.JSONDecodeError as e:
-                self.logger.error(f"Error decoding message: {e}")
+                self.handle_invalid_data(f"Error decoding message: {e}")
                 continue
             if not isinstance(parsed_message, dict):
-                self.logger.error(f"Received message is not a JSON object: {type(parsed_message).__name__}")
+                self.handle_invalid_data(f"Received message is not a JSON object: {type(parsed_message).__name__}")
                 continue
             self.process_message(parsed_message)
+
+    def handle_invalid_data(self, reason: str):
+        """Handle data that is not a valid swchp2pcom message."""
+        if self.remote_id:
+            # Known peer, keep the connection and report the faulty message
+            self.logger.error(f"Invalid data from peer {self.remote_id}: {reason}")
+            return
+
+        # Unidentified connection (e.g. port scanner, HTTP or TLS client), log once and drop it
+        peer = self.transport.getPeer()
+        self.logger.warning(f"Closing connection from {peer.host}:{peer.port}, not a swchp2pcom peer: {reason}")
+        self.is_rejected = True
+        self.buffer = b""
+        self.transport.loseConnection()
 
     def process_message(self, message: Dict[str, Any]):
         """Handle and forward broadcast messages."""
@@ -65,7 +85,7 @@ class P2PNode(Protocol):
         target_id = message.get("target_id")
         
         if not message_id:
-            self.logger.warning("Received message without message_id")
+            self.handle_invalid_data("Received message without message_id")
             return
 
         if self.factory._is_message_seen(message_id):
