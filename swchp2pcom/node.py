@@ -13,7 +13,7 @@ class P2PNode(Protocol):
         self.factory = factory
         self.peers = peers
 
-        self.buffer = ""  # Buffer to hold partial messages
+        self.buffer = b""  # Buffer to hold partial messages (raw bytes, decoded per line)
         self.is_initiator = is_initiator  # Track if this node initiated the connection
         self.is_entering = is_entering # Track if this node is created for entering the network
         self.remote_id: Optional[str] = None  # ID of the remote peer
@@ -37,24 +37,24 @@ class P2PNode(Protocol):
 
     def dataReceived(self, data: bytes):
         """Handle incoming data."""
-        try:
-            decoded_data = data.decode("utf-8")
-        except UnicodeDecodeError as e:
-            self.logger.error(f"Error decoding data: {e}")
-            return
-
-        self.buffer += decoded_data
-        lines = self.buffer.split("\n")
+        # Buffer raw bytes and decode only complete lines, so a multi-byte
+        # UTF-8 character split across TCP chunks is not lost
+        self.buffer += data
+        lines = self.buffer.split(b"\n")
         self.buffer = lines.pop()  # Save incomplete data
 
         for line in lines:
             if not line.strip():
                 continue  # Skip empty lines
             try:
-                parsed_message = json.loads(line)
-                self.process_message(parsed_message)
+                parsed_message = json.loads(line.decode("utf-8"))
+            except UnicodeDecodeError as e:
+                self.logger.error(f"Error decoding data: {e}")
+                continue
             except json.JSONDecodeError as e:
                 self.logger.error(f"Error decoding message: {e}")
+                continue
+            self.process_message(parsed_message)
 
     def process_message(self, message: Dict[str, Any]):
         """Handle and forward broadcast messages."""
