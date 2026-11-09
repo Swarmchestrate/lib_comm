@@ -10,6 +10,7 @@ readme = "README.md"
 packages = [{include = "swchp2pcom"}]
 
 [tool.poetry.dependencies]
+# twisted and setuptools floors are security minimums (Dependabot alerts #5, #7-#14)
 twisted = ">=26.10.0"
 kademlia = "*"
 miniupnpc = "*"
